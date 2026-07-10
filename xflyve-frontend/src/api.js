@@ -22,6 +22,7 @@ export const getProfile = () => api.get("/auth/profile"); // Requires authMiddle
 // ===== ADMIN ROUTES =====
 export const getAllDrivers = () => api.get("/admin/drivers");
 export const createDriver = (driverData) => api.post("/admin/drivers", driverData);
+export const updateDriver = (driverId, driverData) => api.put(`/admin/drivers/${driverId}`, driverData);
 export const deleteDriver = (driverId) => api.delete(`/admin/drivers/${driverId}`);
 
 export const exportDriversExcel = () =>

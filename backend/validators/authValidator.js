@@ -1,5 +1,5 @@
 // authValidator.js
-const { body } = require("express-validator");
+const { body, param } = require("express-validator");
 
 // Signup input validation rules
 exports.signupValidator = [
@@ -46,4 +46,15 @@ exports.driverCreationValidator = [
     .trim()
     .isIn(["local", "interstate"])
     .withMessage("driverType must be 'local' or 'interstate'"),
+];
+
+exports.driverUpdateValidator = [
+  param("driverId").isMongoId().withMessage("Invalid driver ID"),
+  body("name").trim().notEmpty().withMessage("Name is required").escape(),
+  body("email").trim().normalizeEmail().isEmail().withMessage("Valid email is required"),
+  body("password")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters"),
 ];

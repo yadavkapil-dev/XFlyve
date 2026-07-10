@@ -5,8 +5,8 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Collapse,
   IconButton,
+  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -17,13 +17,13 @@ import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
-import NotesIcon from "@mui/icons-material/Notes";
 import SpeedIcon from "@mui/icons-material/Speed";
 import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import {
   getWorkLogsByCurrentDriver,
+  getJobsByDriver,
   createWorkLog,
   updateWorkLog,
   deleteWorkLog,
@@ -46,22 +46,64 @@ const palette = {
 };
 
 const initialLog = {
+  jobId: "",
   date: new Date().toISOString().split("T")[0],
   hours: "",
-  kilometers: "",
   deliveriesDone: "",
   notes: "",
   localStartTime: "",
   localEndTime: "",
   interstateStartKm: "",
   interstateEndKm: "",
-  deliveryLocations: "",
 };
 
 const formatDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown date";
   return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+};
+
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "object") return String(value._id || value.id || "");
+  return String(value);
+};
+
+const getLogJob = (log) => (Array.isArray(log.jobIds) && log.jobIds.length > 0 ? log.jobIds[0] : null);
+
+const getLogJobType = (log) => {
+  const job = getLogJob(log);
+  if (job?.jobType) return job.jobType;
+  if (log.interstateStartKm !== undefined || log.interstateEndKm !== undefined) return "interstate";
+  return "local";
+};
+
+const clearFieldsForJobType = (fields, jobType) => {
+  if (jobType === "local") {
+    return {
+      ...fields,
+      interstateStartKm: "",
+      interstateEndKm: "",
+    };
+  }
+
+  if (jobType === "interstate") {
+    return {
+      ...fields,
+      hours: "",
+      localStartTime: "",
+      localEndTime: "",
+    };
+  }
+
+  return {
+    ...fields,
+    hours: "",
+    localStartTime: "",
+    localEndTime: "",
+    interstateStartKm: "",
+    interstateEndKm: "",
+  };
 };
 
 const getStatusMeta = (status = "pending") => {
@@ -89,11 +131,11 @@ const DriverWorkLogs = () => {
   const driverId = user?._id || user?.id;
 
   const [logs, setLogs] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [newLog, setNewLog] = useState(initialLog);
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
@@ -113,9 +155,20 @@ const DriverWorkLogs = () => {
     }
   }, [driverId]);
 
+  const fetchJobs = useCallback(async () => {
+    if (!driverId) return;
+    try {
+      const res = await getJobsByDriver(driverId);
+      setJobs(res.data.data || []);
+    } catch (err) {
+      setError(err.response?.data?.message || "Server error loading assigned jobs");
+    }
+  }, [driverId]);
+
   useEffect(() => {
     fetchLogs();
-  }, [fetchLogs]);
+    fetchJobs();
+  }, [fetchLogs, fetchJobs]);
 
   const todaysLog = useMemo(() => {
     const todayKey = new Date().toLocaleDateString("en-CA");
@@ -124,30 +177,77 @@ const DriverWorkLogs = () => {
 
   const handleChange = (setter) => (e) => {
     const { name, value } = e.target;
+    if (name === "jobId") {
+      const job = jobs.find((item) => normalizeId(item._id) === normalizeId(value));
+      setter((prev) => clearFieldsForJobType({ ...prev, jobId: value }, job?.jobType));
+      return;
+    }
     setter((prev) => ({ ...prev, [name]: value }));
   };
 
   const validateLog = (log) => {
     if (!log.date) return "Date is required";
-    for (const field of ["hours", "kilometers", "interstateStartKm", "interstateEndKm", "deliveriesDone"]) {
+    if (!log.jobId) return "Select a job before submitting today’s work";
+
+    const job = jobs.find((item) => normalizeId(item._id) === normalizeId(log.jobId));
+    if (!job) return "Select a valid assigned job";
+
+    if (log.deliveriesDone === "") return "Number of deliveries is required";
+    if (Number.isNaN(Number(log.deliveriesDone)) || Number(log.deliveriesDone) < 0) {
+      return "Number of deliveries must be a non-negative number";
+    }
+
+    if (job.jobType === "local") {
+      if (!log.localStartTime) return "Truck pickup time is required";
+      if (!log.localEndTime) return "Finish time is required";
+      if (log.hours === "") return "Total hours is required";
+      if (Number.isNaN(Number(log.hours)) || Number(log.hours) < 0) {
+        return "Total hours must be a non-negative number";
+      }
+      return null;
+    }
+
+    if (log.interstateStartKm === "") return "Start kilometres is required";
+    if (log.interstateEndKm === "") return "End kilometres is required";
+
+    for (const field of ["interstateStartKm", "interstateEndKm"]) {
       if (log[field] !== "" && (Number.isNaN(Number(log[field])) || Number(log[field]) < 0)) {
         return `${field} must be a non-negative number`;
       }
     }
+
+    if (Number(log.interstateEndKm) < Number(log.interstateStartKm)) {
+      return "End kilometres cannot be less than start kilometres";
+    }
+
     return null;
   };
 
-  const toPayload = (log) => ({
-    ...log,
-    hours: Number(log.hours) || 0,
-    kilometers: Number(log.kilometers) || 0,
-    interstateStartKm: Number(log.interstateStartKm) || 0,
-    interstateEndKm: Number(log.interstateEndKm) || 0,
-    deliveriesDone: Number(log.deliveriesDone) || 0,
-    deliveryLocations: log.deliveryLocations
-      ? log.deliveryLocations.split(",").map((loc) => loc.trim()).filter(Boolean)
-      : [],
-  });
+  const toPayload = (log) => {
+    const job = jobs.find((item) => normalizeId(item._id) === normalizeId(log.jobId));
+    const basePayload = {
+      date: log.date,
+      jobId: log.jobId,
+      jobIds: [log.jobId],
+      deliveriesDone: Number(log.deliveriesDone),
+      notes: log.notes,
+    };
+
+    if (job?.jobType === "local") {
+      return {
+        ...basePayload,
+        localStartTime: log.localStartTime,
+        localEndTime: log.localEndTime,
+        hours: Number(log.hours),
+      };
+    }
+
+    return {
+      ...basePayload,
+      interstateStartKm: Number(log.interstateStartKm),
+      interstateEndKm: Number(log.interstateEndKm),
+    };
+  };
 
   const handleCreateLog = async () => {
     const errMsg = validateLog(newLog);
@@ -160,7 +260,6 @@ const DriverWorkLogs = () => {
       if (res.data.success) {
         setSuccess("Today’s Work submitted successfully");
         setNewLog(initialLog);
-        setShowAdvanced(false);
         fetchLogs();
       } else setError(res.data.message || "Failed to create Today’s Work record");
     } catch (err) {
@@ -172,18 +271,20 @@ const DriverWorkLogs = () => {
 
   const startEditing = (log) => {
     setEditingId(log._id);
-    setEditFields({
+    const job = getLogJob(log);
+    const jobId = normalizeId(job);
+    const jobType = job?.jobType || getLogJobType(log);
+    setEditFields(clearFieldsForJobType({
+      jobId,
       date: log.date ? new Date(log.date).toISOString().split("T")[0] : "",
       hours: log.hours?.toString() ?? "",
-      kilometers: log.kilometers?.toString() ?? "",
       deliveriesDone: log.deliveriesDone?.toString() || "",
       notes: log.notes ?? "",
       localStartTime: log.localStartTime || "",
       localEndTime: log.localEndTime || "",
       interstateStartKm: log.interstateStartKm?.toString() || "",
       interstateEndKm: log.interstateEndKm?.toString() || "",
-      deliveryLocations: Array.isArray(log.deliveryLocations) ? log.deliveryLocations.join(", ") : "",
-    });
+    }, jobType));
     setError("");
     setSuccess("");
   };
@@ -223,27 +324,61 @@ const DriverWorkLogs = () => {
     }
   };
 
-  const renderFormFields = (fields, setter) => (
+  const renderFormFields = (fields, setter) => {
+    const selectedJob = jobs.find((job) => normalizeId(job._id) === normalizeId(fields.jobId));
+    const jobType = selectedJob?.jobType;
+
+    return (
     <Stack spacing={1.5}>
+      <TextField select label="Job" name="jobId" value={fields.jobId || ""} onChange={handleChange(setter)} fullWidth required>
+        {jobs.map((job) => (
+          <MenuItem key={job._id} value={job._id}>
+            {job.title || "Assigned job"} · {job.jobType}
+          </MenuItem>
+        ))}
+      </TextField>
       <TextField label="Date" type="date" name="date" value={fields.date} onChange={handleChange(setter)} fullWidth InputLabelProps={{ shrink: true }} />
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
-        <TextField label="Hours" name="hours" type="number" value={fields.hours} onChange={handleChange(setter)} inputProps={{ min: 0, step: "0.1" }} fullWidth />
-        <TextField label="Kilometres" name="kilometers" type="number" value={fields.kilometers} onChange={handleChange(setter)} inputProps={{ min: 0, step: "0.1" }} fullWidth />
-        <TextField label="Deliveries" name="deliveriesDone" type="number" value={fields.deliveriesDone} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth />
-      </Box>
+      {jobType === "local" && (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
+          <TextField label="Truck pickup time" name="localStartTime" type="time" value={fields.localStartTime} onChange={handleChange(setter)} InputLabelProps={{ shrink: true }} fullWidth required />
+          <TextField label="Finish time" name="localEndTime" type="time" value={fields.localEndTime} onChange={handleChange(setter)} InputLabelProps={{ shrink: true }} fullWidth required />
+          <TextField label="Number of deliveries" name="deliveriesDone" type="number" value={fields.deliveriesDone} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth required />
+          <TextField label="Total hours" name="hours" type="number" value={fields.hours} onChange={handleChange(setter)} inputProps={{ min: 0, step: "0.1" }} fullWidth required />
+        </Box>
+      )}
+      {jobType === "interstate" && (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
+          <TextField label="Start kilometres" name="interstateStartKm" type="number" value={fields.interstateStartKm} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth required />
+          <TextField label="End kilometres" name="interstateEndKm" type="number" value={fields.interstateEndKm} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth required />
+          <TextField label="Number of deliveries" name="deliveriesDone" type="number" value={fields.deliveriesDone} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth required />
+        </Box>
+      )}
       <TextField label="Notes" name="notes" value={fields.notes} onChange={handleChange(setter)} fullWidth multiline rows={3} placeholder="Anything the owner should know?" />
     </Stack>
-  );
+    );
+  };
 
-  const renderAdvancedFields = (fields, setter) => (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
-      <TextField label="Local start time" name="localStartTime" type="time" value={fields.localStartTime} onChange={handleChange(setter)} InputLabelProps={{ shrink: true }} fullWidth />
-      <TextField label="Local end time" name="localEndTime" type="time" value={fields.localEndTime} onChange={handleChange(setter)} InputLabelProps={{ shrink: true }} fullWidth />
-      <TextField label="Interstate start km" name="interstateStartKm" type="number" value={fields.interstateStartKm} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth />
-      <TextField label="Interstate end km" name="interstateEndKm" type="number" value={fields.interstateEndKm} onChange={handleChange(setter)} inputProps={{ min: 0 }} fullWidth />
-      <TextField label="Delivery locations" name="deliveryLocations" value={fields.deliveryLocations} onChange={handleChange(setter)} fullWidth multiline rows={2} sx={{ gridColumn: { sm: "1 / -1" } }} placeholder="Comma separated" />
-    </Box>
-  );
+  const renderLogStats = (log) => {
+    const jobType = getLogJobType(log);
+    if (jobType === "interstate") {
+      return (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
+          <StatPill icon={<SpeedIcon />} label="Start km" value={log.interstateStartKm ?? "—"} />
+          <StatPill icon={<SpeedIcon />} label="End km" value={log.interstateEndKm ?? "—"} />
+          <StatPill icon={<FactCheckIcon />} label="Deliveries" value={log.deliveriesDone ?? 0} />
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(4, 1fr)" }, gap: 1 }}>
+        <StatPill icon={<TimerOutlinedIcon />} label="Pickup" value={log.localStartTime || "—"} />
+        <StatPill icon={<TimerOutlinedIcon />} label="Finish" value={log.localEndTime || "—"} />
+        <StatPill icon={<FactCheckIcon />} label="Deliveries" value={log.deliveriesDone ?? 0} />
+        <StatPill icon={<TimerOutlinedIcon />} label="Hours" value={log.hours ?? 0} />
+      </Box>
+    );
+  };
 
   return (
     <Box sx={{ minHeight: "100vh", pt: { xs: 3, sm: 4 }, pb: { xs: 4, sm: 6 }, overflowX: "hidden", background: `radial-gradient(circle at 0% 0%, ${alpha(palette.teal, 0.13)}, transparent 32%), linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)` }}>
@@ -267,12 +402,6 @@ const DriverWorkLogs = () => {
               </Alert>
             )}
             {renderFormFields(newLog, setNewLog)}
-            <Button endIcon={<ExpandMoreIcon />} onClick={() => setShowAdvanced((prev) => !prev)} sx={{ alignSelf: "flex-start", fontWeight: 850 }}>
-              {showAdvanced ? "Hide optional details" : "Add optional details"}
-            </Button>
-            <Collapse in={showAdvanced}>
-              {renderAdvancedFields(newLog, setNewLog)}
-            </Collapse>
             <Button variant="contained" size="large" onClick={handleCreateLog} disabled={processing} sx={{ minHeight: 56, borderRadius: 3, bgcolor: palette.ink, fontWeight: 950 }}>
               {processing ? "Submitting..." : "Submit Today’s Work"}
             </Button>
@@ -300,7 +429,6 @@ const DriverWorkLogs = () => {
                 {editingId === log._id ? (
                   <Stack spacing={2}>
                     {renderFormFields(editFields, setEditFields)}
-                    {renderAdvancedFields(editFields, setEditFields)}
                     <Stack direction="row" spacing={1}>
                       <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveEdit} disabled={processing}>Save</Button>
                       <Button variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => setEditingId(null)} disabled={processing}>Cancel</Button>
@@ -311,6 +439,9 @@ const DriverWorkLogs = () => {
                     <Stack direction="row" justifyContent="space-between" spacing={1}>
                       <Box>
                         <Typography fontWeight={950} sx={{ color: palette.ink }}>{formatDate(log.date)}</Typography>
+                        {getLogJob(log)?.title && (
+                          <Typography variant="body2" sx={{ color: palette.muted }}>{getLogJob(log).title} · {getLogJobType(log)}</Typography>
+                        )}
                         <Typography variant="body2" sx={{ color: palette.muted }}>{log.notes || "No notes added."}</Typography>
                       </Box>
                       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
@@ -332,18 +463,9 @@ const DriverWorkLogs = () => {
                         Rejection reason: {log.rejectionReason}
                       </Alert>
                     )}
-                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
-                      <StatPill icon={<TimerOutlinedIcon />} label="Hours" value={log.hours ?? 0} />
-                      <StatPill icon={<SpeedIcon />} label="Kilometres" value={log.kilometers ?? 0} />
-                      <StatPill icon={<FactCheckIcon />} label="Deliveries" value={log.deliveriesDone ?? 0} />
-                    </Box>
-                    {(log.localStartTime || log.localEndTime || log.interstateStartKm || log.interstateEndKm) && (
-                      <Typography variant="caption" sx={{ color: palette.muted }}>
-                        Optional: {log.localStartTime || "—"} → {log.localEndTime || "—"} · KM {log.interstateStartKm ?? "—"} → {log.interstateEndKm ?? "—"}
-                      </Typography>
-                    )}
+                    {renderLogStats(log)}
                     {Array.isArray(log.deliveryLocations) && log.deliveryLocations.length > 0 && (
-                      <Chip icon={<NotesIcon />} label={log.deliveryLocations.join(", ")} sx={{ alignSelf: "flex-start", maxWidth: "100%" }} />
+                      <Chip icon={<LocalShippingIcon />} label={log.deliveryLocations.join(", ")} sx={{ alignSelf: "flex-start", maxWidth: "100%" }} />
                     )}
                   </Stack>
                 )}

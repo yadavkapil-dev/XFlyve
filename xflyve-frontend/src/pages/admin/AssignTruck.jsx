@@ -49,6 +49,9 @@ const dateKey = (value) => {
   return date.toLocaleDateString("en-CA");
 };
 
+const isSelectableTruck = (truck) =>
+  !["out-of-service", "maintenance", "on-route", "on route"].includes(truck.status);
+
 const AssignAndManageTrucks = () => {
   const [drivers, setDrivers] = useState([]);
   const [trucks, setTrucks] = useState([]);
@@ -92,6 +95,8 @@ const AssignAndManageTrucks = () => {
   const selectedDriverConflict = assignments.find((a) => selectedDriver && date && a.driverId?._id === selectedDriver && dateKey(a.date) === date);
   const selectedTruckConflict = assignments.find((a) => selectedTruck && date && a.truckId?._id === selectedTruck && dateKey(a.date) === date);
   const todaysAssignments = useMemo(() => assignments.filter((a) => dateKey(a.date) === new Date().toLocaleDateString("en-CA")), [assignments]);
+  const selectableTrucks = useMemo(() => trucks.filter(isSelectableTruck), [trucks]);
+  const selectedEditTruck = trucks.find((truck) => truck._id === editData?.truckId);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -182,7 +187,7 @@ const AssignAndManageTrucks = () => {
                 {drivers.map((driver) => <MenuItem key={driver._id} value={driver._id}>{driver.name}</MenuItem>)}
               </TextField>
               <TextField select fullWidth label="Select Truck" value={selectedTruck} onChange={(e) => setSelectedTruck(e.target.value)} required>
-                {trucks.map((truck) => <MenuItem key={truck._id} value={truck._id}>{truck.truckNumber}</MenuItem>)}
+                {selectableTrucks.map((truck) => <MenuItem key={truck._id} value={truck._id}>{truck.truckNumber}</MenuItem>)}
               </TextField>
               <TextField fullWidth label="Assignment Date" type="date" InputLabelProps={{ shrink: true }} value={date} onChange={(e) => setDate(e.target.value)} required />
               <Button type="submit" variant="contained" size="large" fullWidth disabled={submitting} sx={{ minHeight: 56, borderRadius: 3, bgcolor: palette.ink, fontWeight: 950 }}>
@@ -228,7 +233,10 @@ const AssignAndManageTrucks = () => {
                 {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
               </TextField>
               <TextField select label="Truck" name="truckId" value={editData?.truckId || ""} onChange={(e) => setEditData((prev) => ({ ...prev, truckId: e.target.value }))} fullWidth>
-                {trucks.map((t) => <MenuItem key={t._id} value={t._id}>{t.truckNumber}</MenuItem>)}
+                {selectedEditTruck && !isSelectableTruck(selectedEditTruck) && (
+                  <MenuItem value={selectedEditTruck._id} disabled>{selectedEditTruck.truckNumber} · unavailable</MenuItem>
+                )}
+                {selectableTrucks.map((t) => <MenuItem key={t._id} value={t._id}>{t.truckNumber}</MenuItem>)}
               </TextField>
               <TextField label="Date" type="date" name="date" value={editData?.date || ""} onChange={(e) => setEditData((prev) => ({ ...prev, date: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
             </Stack>

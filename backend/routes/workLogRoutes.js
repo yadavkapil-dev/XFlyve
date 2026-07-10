@@ -50,6 +50,7 @@ router.post(
   "/",
   requireDriver,
   validateWorkLog,
+  validateRequest,
   workLogController.createWorkLog
 );
 
@@ -74,6 +75,7 @@ router.put(
   requireDriver,
   validateMongoId("logId"),
   validateWorkLog,
+  validateRequest,
   workLogController.updateWorkLog
 );
 

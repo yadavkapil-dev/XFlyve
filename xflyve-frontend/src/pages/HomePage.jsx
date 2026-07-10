@@ -475,7 +475,7 @@ const HomePage = () => {
       pendingJobs: pendingJobs.length,
       totalDrivers: drivers.length,
       missingWorkLogs: Math.max(drivers.length - driverIdsWithLogToday.size, 0),
-      trucksInMaintenance: trucks.filter((truck) => truck.status === "maintenance").length,
+      trucksOutOfService: trucks.filter((truck) => truck.status === "out-of-service" || truck.status === "maintenance").length,
       weeklyLogs: weeklyLogs.length,
       weeklyHours,
       weeklyKilometres,
@@ -714,31 +714,6 @@ const HomePage = () => {
               </Paper>
             </Box>
 
-            <Box sx={{ gridColumn: "1 / -1" }}>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<AddCircleOutlineIcon />}
-                onClick={() => navigate("/jobs/create")}
-                sx={{
-                  minHeight: { xs: 56, sm: 58 },
-                  width: { xs: "100%", sm: "auto" },
-                  borderRadius: 3.5,
-                  bgcolor: "white",
-                  color: palette.ink,
-                  fontWeight: 950,
-                  px: { xs: 3, sm: 3.5 },
-                  letterSpacing: "-0.02em",
-                  boxShadow: `0 16px 36px ${alpha("#000", 0.14)}`,
-                  "&:hover": {
-                    bgcolor: alpha("#fff", 0.92),
-                    boxShadow: `0 18px 42px ${alpha("#000", 0.18)}`,
-                  },
-                }}
-              >
-                Create Job
-              </Button>
-            </Box>
           </Box>
         </Paper>
 
@@ -853,13 +828,13 @@ const HomePage = () => {
                       tone={dashboard.missingWorkLogs > 0 ? "warning" : "success"}
                     />
                     <AttentionCard
-                      title="Trucks in Maintenance"
-                      value={dashboard.trucksInMaintenance}
-                      description="Fleet records currently marked as maintenance."
+                      title="Trucks Out of Service"
+                      value={dashboard.trucksOutOfService}
+                      description="Fleet records currently unable to operate."
                       icon={<LocalShippingIcon />}
                       actionLabel="Manage trucks"
                       onClick={() => navigate("/trucks")}
-                      tone={dashboard.trucksInMaintenance > 0 ? "warning" : "success"}
+                      tone={dashboard.trucksOutOfService > 0 ? "warning" : "success"}
                     />
                   </Stack>
                 </DashboardSection>

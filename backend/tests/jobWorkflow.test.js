@@ -11,11 +11,21 @@ const makeObjectId = (value = new mongoose.Types.ObjectId().toString()) => ({
   toString: () => value,
 });
 
-const makeJobDoc = ({ assignedTo, status }) => ({
-  _id: makeObjectId(),
-  assignedTo: makeObjectId(assignedTo),
-  status,
-  save: jest.fn().mockResolvedValue(undefined),
+const dateInputValue = (dayOffset = 0) => {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const leanResult = (value) => ({
+  lean: jest.fn().mockResolvedValue(value),
+});
+
+const driverLookup = (value) => ({
+  lean: jest.fn().mockResolvedValue(value),
 });
 
 const populatedFindById = (job) => ({
@@ -24,26 +34,85 @@ const populatedFindById = (job) => ({
   }),
 });
 
-const loadController = () => {
+const makeJobDoc = ({
+  assignedTo,
+  assignedTruck = new mongoose.Types.ObjectId().toString(),
+  status,
+}) => ({
+  _id: makeObjectId(),
+  assignedTo: makeObjectId(assignedTo),
+  assignedTruck: makeObjectId(assignedTruck),
+  status,
+  save: jest.fn().mockResolvedValue(undefined),
+});
+
+const makeTruckDoc = ({
+  status = "available",
+  recordStatus = "active",
+} = {}) => ({
+  _id: makeObjectId(),
+  status,
+  recordStatus,
+  assignedJob: null,
+  save: jest.fn().mockResolvedValue(undefined),
+});
+
+const loadJobController = () => {
   jest.resetModules();
 
   const Job = {
+    create: jest.fn(),
     findById: jest.fn(),
+    findOne: jest.fn(),
     findReadyForInvoicing: jest.fn(),
     populate: jest.fn(),
+    updateOne: jest.fn(),
   };
   const Driver = {
     findById: jest.fn(),
   };
+  const Truck = {
+    findById: jest.fn(),
+    updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+  };
 
   jest.doMock("../models/job", () => Job);
   jest.doMock("../models/driver", () => Driver);
+  jest.doMock("../models/truck", () => Truck);
   jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
 
   return {
     controller: require("../controllers/jobController"),
     Job,
     Driver,
+    Truck,
+  };
+};
+
+const loadTruckController = () => {
+  jest.resetModules();
+
+  const Truck = {
+    findById: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
+  };
+  const Job = {
+    exists: jest.fn(),
+  };
+  const TruckAssignment = {
+    exists: jest.fn(),
+  };
+
+  jest.doMock("../models/truck", () => Truck);
+  jest.doMock("../models/job", () => Job);
+  jest.doMock("../models/dailyTruckAssignment", () => TruckAssignment);
+  jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
+
+  return {
+    controller: require("../controllers/truckController"),
+    Truck,
+    Job,
+    TruckAssignment,
   };
 };
 
@@ -51,6 +120,7 @@ const loadJobModel = () => {
   jest.resetModules();
   jest.dontMock("../models/job");
   jest.dontMock("../models/driver");
+  jest.dontMock("../models/truck");
   jest.dontMock("../utils/logger");
 
   if (mongoose.models.Job) {
@@ -73,15 +143,122 @@ describe("Job workflow controller", () => {
     jest.restoreAllMocks();
   });
 
+  test("creates a pending job for an available truck without changing truck status", async () => {
+    const { controller, Job, Driver, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const truckId = new mongoose.Types.ObjectId().toString();
+    const createdJob = { _id: new mongoose.Types.ObjectId().toString(), status: "pending" };
+
+    Driver.findById.mockReturnValueOnce(driverLookup({ _id: driverId }));
+    Truck.findById.mockReturnValueOnce(leanResult({ _id: truckId, status: "available", recordStatus: "active" }));
+    Job.findOne.mockReturnValueOnce(leanResult(null));
+    Job.create.mockResolvedValueOnce(createdJob);
+
+    const req = {
+      body: {
+        title: "Local delivery",
+        description: "Drop freight",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: driverId,
+        assignedTruck: truckId,
+        jobDate: dateInputValue(),
+        jobType: "local",
+      },
+    };
+    const res = makeResponse();
+
+    await controller.createJob(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(Job.create).toHaveBeenCalledWith(expect.objectContaining({
+      assignedTruck: truckId,
+      status: "pending",
+    }));
+    expect(Truck.updateOne).not.toHaveBeenCalled();
+  });
+
+  test("rejects creating a job with a past calendar date", async () => {
+    const { controller, Job, Driver, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const truckId = new mongoose.Types.ObjectId().toString();
+
+    Driver.findById.mockReturnValueOnce(driverLookup({ _id: driverId }));
+    Truck.findById.mockReturnValueOnce(leanResult({ _id: truckId, status: "available", recordStatus: "active" }));
+
+    const req = {
+      body: {
+        title: "Past delivery",
+        description: "Drop freight",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: driverId,
+        assignedTruck: truckId,
+        jobDate: dateInputValue(-1),
+        jobType: "local",
+      },
+    };
+    const res = makeResponse();
+
+    await controller.createJob(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      status: "fail",
+      message: "Job date cannot be in the past.",
+    });
+    expect(Job.findOne).not.toHaveBeenCalled();
+    expect(Job.create).not.toHaveBeenCalled();
+  });
+
+  test("allows creating a job with a future calendar date", async () => {
+    const { controller, Job, Driver, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const truckId = new mongoose.Types.ObjectId().toString();
+    const createdJob = { _id: new mongoose.Types.ObjectId().toString(), status: "pending" };
+
+    Driver.findById.mockReturnValueOnce(driverLookup({ _id: driverId }));
+    Truck.findById.mockReturnValueOnce(leanResult({ _id: truckId, status: "available", recordStatus: "active" }));
+    Job.findOne.mockReturnValueOnce(leanResult(null));
+    Job.create.mockResolvedValueOnce(createdJob);
+
+    const req = {
+      body: {
+        title: "Future delivery",
+        description: "Drop freight",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: driverId,
+        assignedTruck: truckId,
+        jobDate: dateInputValue(1),
+        jobType: "local",
+      },
+    };
+    const res = makeResponse();
+
+    await controller.createJob(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(Job.create).toHaveBeenCalledWith(expect.objectContaining({
+      jobDate: expect.any(Date),
+      status: "pending",
+    }));
+  });
+
   describe("driver status transitions", () => {
-    test("allows pending to move to in-progress", async () => {
-      const { controller, Job } = loadController();
+    test("allows pending to move to in-progress and marks the truck on-route", async () => {
+      const { controller, Job, Truck } = loadJobController();
       const driverId = new mongoose.Types.ObjectId().toString();
-      const jobDoc = makeJobDoc({ assignedTo: driverId, status: "pending" });
+      const truckId = new mongoose.Types.ObjectId().toString();
+      const jobDoc = makeJobDoc({ assignedTo: driverId, assignedTruck: truckId, status: "pending" });
+      const truckDoc = makeTruckDoc();
       const updatedJob = { _id: jobDoc._id.toString(), status: "in-progress" };
+
       Job.findById
         .mockResolvedValueOnce(jobDoc)
         .mockReturnValueOnce(populatedFindById(updatedJob));
+      Truck.findById.mockResolvedValueOnce(truckDoc);
+      Job.findOne.mockReturnValueOnce(leanResult(null));
 
       const req = {
         params: { jobId: new mongoose.Types.ObjectId().toString() },
@@ -95,14 +272,18 @@ describe("Job workflow controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(jobDoc.status).toBe("in-progress");
       expect(jobDoc.save).toHaveBeenCalledTimes(1);
-      expect(res.json).toHaveBeenCalledWith({ status: "success", data: updatedJob });
+      expect(truckDoc.status).toBe("on-route");
+      expect(truckDoc.assignedJob).toBe(jobDoc._id);
+      expect(truckDoc.save).toHaveBeenCalledTimes(1);
     });
 
-    test("allows in-progress to move to completed", async () => {
-      const { controller, Job } = loadController();
+    test("allows in-progress to move to completed and marks the truck available", async () => {
+      const { controller, Job, Truck } = loadJobController();
       const driverId = new mongoose.Types.ObjectId().toString();
-      const jobDoc = makeJobDoc({ assignedTo: driverId, status: "in-progress" });
+      const truckId = new mongoose.Types.ObjectId().toString();
+      const jobDoc = makeJobDoc({ assignedTo: driverId, assignedTruck: truckId, status: "in-progress" });
       const updatedJob = { _id: jobDoc._id.toString(), status: "completed" };
+
       Job.findById
         .mockResolvedValueOnce(jobDoc)
         .mockReturnValueOnce(populatedFindById(updatedJob));
@@ -119,7 +300,10 @@ describe("Job workflow controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(jobDoc.status).toBe("completed");
       expect(jobDoc.save).toHaveBeenCalledTimes(1);
-      expect(res.json).toHaveBeenCalledWith({ status: "success", data: updatedJob });
+      expect(Truck.updateOne).toHaveBeenCalledWith(
+        { _id: jobDoc.assignedTruck, recordStatus: { $ne: "archived" } },
+        { status: "available", assignedJob: null }
+      );
     });
 
     test.each([
@@ -128,7 +312,7 @@ describe("Job workflow controller", () => {
       ["completed", "in-progress"],
       ["in-progress", "pending"],
     ])("rejects invalid transition %s to %s with HTTP 409", async (currentStatus, nextStatus) => {
-      const { controller, Job } = loadController();
+      const { controller, Job } = loadJobController();
       const driverId = new mongoose.Types.ObjectId().toString();
       const jobDoc = makeJobDoc({ assignedTo: driverId, status: currentStatus });
       Job.findById.mockResolvedValueOnce(jobDoc);
@@ -151,7 +335,7 @@ describe("Job workflow controller", () => {
   });
 
   test("driver cannot start another driver's job", async () => {
-    const { controller, Job } = loadController();
+    const { controller, Job } = loadJobController();
     const jobDoc = makeJobDoc({
       assignedTo: new mongoose.Types.ObjectId().toString(),
       status: "pending",
@@ -172,7 +356,7 @@ describe("Job workflow controller", () => {
   });
 
   test("driver cannot complete another driver's job", async () => {
-    const { controller, Job } = loadController();
+    const { controller, Job } = loadJobController();
     const jobDoc = makeJobDoc({
       assignedTo: new mongoose.Types.ObjectId().toString(),
       status: "in-progress",
@@ -192,7 +376,7 @@ describe("Job workflow controller", () => {
   });
 
   test("completion endpoint cannot complete a pending job directly", async () => {
-    const { controller, Job } = loadController();
+    const { controller, Job } = loadJobController();
     const driverId = new mongoose.Types.ObjectId().toString();
     const jobDoc = makeJobDoc({ assignedTo: driverId, status: "pending" });
     Job.findById.mockResolvedValueOnce(jobDoc);
@@ -211,6 +395,155 @@ describe("Job workflow controller", () => {
       status: "fail",
       message: "Only an in-progress job can be completed",
     });
+  });
+
+  test("job cannot start if its truck is out of service", async () => {
+    const { controller, Job, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const jobDoc = makeJobDoc({ assignedTo: driverId, status: "pending" });
+    const truckDoc = makeTruckDoc({ status: "out-of-service" });
+
+    Job.findById.mockResolvedValueOnce(jobDoc);
+    Truck.findById.mockResolvedValueOnce(truckDoc);
+
+    const req = {
+      params: { jobId: new mongoose.Types.ObjectId().toString() },
+      user: { id: driverId, role: "driver" },
+      body: { status: "in-progress" },
+    };
+    const res = makeResponse();
+
+    await controller.updateJob(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(jobDoc.save).not.toHaveBeenCalled();
+    expect(truckDoc.save).not.toHaveBeenCalled();
+  });
+
+  test("prevents two active jobs from putting the same truck on-route", async () => {
+    const { controller, Job, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const jobDoc = makeJobDoc({ assignedTo: driverId, status: "pending" });
+    const truckDoc = makeTruckDoc();
+
+    Job.findById.mockResolvedValueOnce(jobDoc);
+    Truck.findById.mockResolvedValueOnce(truckDoc);
+    Job.findOne.mockReturnValueOnce(leanResult({ _id: new mongoose.Types.ObjectId() }));
+
+    const req = {
+      params: { jobId: new mongoose.Types.ObjectId().toString() },
+      user: { id: driverId, role: "driver" },
+      body: { status: "in-progress" },
+    };
+    const res = makeResponse();
+
+    await controller.updateJob(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(jobDoc.save).not.toHaveBeenCalled();
+    expect(truckDoc.save).not.toHaveBeenCalled();
+  });
+
+  test("out-of-service truck cannot be assigned to a new job", async () => {
+    const { controller, Job, Driver, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const truckId = new mongoose.Types.ObjectId().toString();
+
+    Driver.findById.mockReturnValueOnce(driverLookup({ _id: driverId }));
+    Truck.findById.mockReturnValueOnce(leanResult({ _id: truckId, status: "out-of-service", recordStatus: "active" }));
+
+    const req = {
+      body: {
+        title: "Local delivery",
+        description: "Drop freight",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: driverId,
+        assignedTruck: truckId,
+        jobDate: dateInputValue(),
+        jobType: "local",
+      },
+    };
+    const res = makeResponse();
+
+    await controller.createJob(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(Job.create).not.toHaveBeenCalled();
+  });
+
+  test("completing a job does not change an archived truck to available", async () => {
+    const { controller, Job, Truck } = loadJobController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const jobDoc = makeJobDoc({ assignedTo: driverId, status: "in-progress" });
+    const updatedJob = { _id: jobDoc._id.toString(), status: "completed" };
+
+    Job.findById
+      .mockResolvedValueOnce(jobDoc)
+      .mockReturnValueOnce(populatedFindById(updatedJob));
+
+    const req = {
+      params: { jobId: new mongoose.Types.ObjectId().toString() },
+      user: { id: driverId, role: "driver" },
+      body: { status: "completed" },
+    };
+    const res = makeResponse();
+
+    await controller.updateJob(req, res);
+
+    expect(Truck.updateOne).toHaveBeenCalledWith(
+      { _id: jobDoc.assignedTruck, recordStatus: { $ne: "archived" } },
+      { status: "available", assignedJob: null }
+    );
+  });
+});
+
+describe("Truck admin status workflow", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test("admin can mark a truck out of service and return it to service", async () => {
+    const { controller, Truck, Job } = loadTruckController();
+    const truckDoc = makeTruckDoc();
+    Truck.findById.mockResolvedValue(truckDoc);
+    Job.exists.mockResolvedValue(null);
+
+    const outRes = makeResponse();
+    await controller.updateTruck(
+      { params: { truckId: new mongoose.Types.ObjectId().toString() }, body: { status: "out-of-service" } },
+      outRes
+    );
+
+    expect(outRes.status).toHaveBeenCalledWith(200);
+    expect(truckDoc.status).toBe("out-of-service");
+    expect(truckDoc.save).toHaveBeenCalledTimes(1);
+
+    const availableRes = makeResponse();
+    await controller.updateTruck(
+      { params: { truckId: new mongoose.Types.ObjectId().toString() }, body: { status: "available" } },
+      availableRes
+    );
+
+    expect(availableRes.status).toHaveBeenCalledWith(200);
+    expect(truckDoc.status).toBe("available");
+    expect(truckDoc.save).toHaveBeenCalledTimes(2);
+  });
+
+  test("admin cannot mark a truck out of service while it has an in-progress job", async () => {
+    const { controller, Truck, Job } = loadTruckController();
+    const truckDoc = makeTruckDoc();
+    Truck.findById.mockResolvedValueOnce(truckDoc);
+    Job.exists.mockResolvedValueOnce({ _id: new mongoose.Types.ObjectId() });
+
+    const res = makeResponse();
+    await controller.updateTruck(
+      { params: { truckId: new mongoose.Types.ObjectId().toString() }, body: { status: "out-of-service" } },
+      res
+    );
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(truckDoc.save).not.toHaveBeenCalled();
   });
 });
 

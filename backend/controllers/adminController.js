@@ -163,15 +163,44 @@ exports.createDriver = async (req, res) => {
       abn,
     } = req.body;
 
-    // Check if email already exists
-    const existingDriver = await Driver.findOne({ email });
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingDriver = await Driver.findOne({ email: normalizedEmail });
     if (existingDriver) {
-      return res.status(400).json({ status: "fail", message: "Email already in use" });
+      if (existingDriver.recordStatus !== "archived") {
+        return res.status(409).json({
+          status: "fail",
+          message: "A driver with this email already exists",
+        });
+      }
+
+      existingDriver.name = name;
+      existingDriver.email = normalizedEmail;
+      existingDriver.password = password;
+      existingDriver.driverType = driverType;
+      existingDriver.phone = phone;
+      existingDriver.active = true;
+      existingDriver.recordStatus = "active";
+      existingDriver.payType = payType;
+      existingDriver.hourlyRate = hourlyRate;
+      existingDriver.kmRate = kmRate;
+      existingDriver.deliveryRate = deliveryRate;
+      existingDriver.abn = abn;
+      existingDriver.role = "driver";
+      await existingDriver.save();
+
+      const restoredDriver = existingDriver.toObject();
+      delete restoredDriver.password;
+
+      return res.status(201).json({
+        status: "success",
+        message: "Driver created successfully",
+        data: restoredDriver,
+      });
     }
 
     const newDriver = new Driver({
       name,
-      email,
+      email: normalizedEmail,
       password,
       driverType,
       phone,
@@ -189,7 +218,88 @@ exports.createDriver = async (req, res) => {
 
     return res.status(201).json({ status: "success", message: "Driver created successfully" });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        status: "fail",
+        message: "A driver with this email already exists",
+      });
+    }
+
+    if (err.name === "ValidationError") {
+      const validationErrors = Object.values(err.errors).map(error => ({
+        field: error.path,
+        message: error.message,
+      }));
+
+      return res.status(422).json({
+        success: false,
+        status: "fail",
+        message: validationErrors.map(error => error.message).join(", "),
+        errors: validationErrors,
+      });
+    }
+
     logger.error("Failed to create driver: %o", err);
     return res.status(500).json({ status: "error", message: "Server error creating driver" });
+  }
+};
+
+exports.updateDriver = async (req, res) => {
+  try {
+    const { driverId } = req.params;
+    const { name, email, password } = req.body;
+
+    const driver = await Driver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ status: "fail", message: "Driver not found" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingDriver = await Driver.findOne({
+      email: normalizedEmail,
+      _id: { $ne: driverId },
+    }).lean();
+
+    if (existingDriver) {
+      return res.status(409).json({ status: "fail", message: "Email already in use" });
+    }
+
+    driver.name = name;
+    driver.email = normalizedEmail;
+    if (password && password.trim()) {
+      driver.password = password.trim();
+    }
+
+    await driver.save();
+
+    const updatedDriver = driver.toObject();
+    delete updatedDriver.password;
+
+    return res.status(200).json({
+      status: "success",
+      message: "Driver updated successfully",
+      data: updatedDriver,
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ status: "fail", message: "Email already in use" });
+    }
+
+    if (err.name === "ValidationError") {
+      const validationErrors = Object.values(err.errors).map(error => ({
+        field: error.path,
+        message: error.message,
+      }));
+
+      return res.status(422).json({
+        success: false,
+        status: "fail",
+        message: validationErrors.map(error => error.message).join(", "),
+        errors: validationErrors,
+      });
+    }
+
+    logger.error("Failed to update driver %s: %o", req.params.driverId, err);
+    return res.status(500).json({ status: "error", message: "Server error updating driver" });
   }
 };

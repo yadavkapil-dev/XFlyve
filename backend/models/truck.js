@@ -14,7 +14,7 @@ const truckSchema = new mongoose.Schema({
   }, // e.g. tons or cubic meters
   status: { 
     type: String, 
-    enum: ["available", "on route", "maintenance"], 
+    enum: ["available", "on-route", "out-of-service"], 
     default: "available" 
   },
   recordStatus: {
@@ -34,11 +34,13 @@ const truckSchema = new mongoose.Schema({
   lastMaintenanceDate: { type: Date },
 }, { timestamps: true });
 
-// Normalize truckNumber before saving
-truckSchema.pre("save", function(next) {
+// Normalize legacy/status values before validation and saving.
+truckSchema.pre("validate", function(next) {
   if (this.isModified("truckNumber")) {
     this.truckNumber = this.truckNumber.toUpperCase();
   }
+  if (this.status === "on route") this.status = "on-route";
+  if (this.status === "maintenance") this.status = "out-of-service";
   next();
 });
 

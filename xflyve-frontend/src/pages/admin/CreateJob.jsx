@@ -18,6 +18,7 @@ import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import dayjs from "dayjs";
 import {
   getAllTrucks,
   getAllTruckAssignments,
@@ -55,6 +56,14 @@ const safeArray = (res, keys = []) => {
   if (Array.isArray(res?.data?.data)) return res.data.data;
   if (Array.isArray(res?.data)) return res.data;
   return [];
+};
+
+const isSelectableTruck = (truck) =>
+  !["out-of-service", "maintenance", "on-route", "on route"].includes(truck.status);
+
+const getAssignmentDriverId = (assignment) => {
+  if (!assignment?.driverId) return "";
+  return assignment.driverId._id || assignment.driverId;
 };
 
 const SectionCard = ({ icon, title, subtitle, children }) => (
@@ -128,8 +137,10 @@ const CreateJob = () => {
   }, []);
 
   const selectedTruck = trucks.find((truck) => truck._id === formData.truckId);
+  const selectableTrucks = trucks.filter(isSelectableTruck);
   const selectedDriver = drivers.find((driver) => driver._id === formData.assignedTo);
   const selectedAssignment = assignments.find((a) => a.truckId?._id === formData.truckId);
+  const todayDate = dayjs().format("YYYY-MM-DD");
 
   const assignmentWarning = useMemo(() => {
     if (!selectedAssignment) return "";
@@ -142,12 +153,26 @@ const CreateJob = () => {
 
   const handleTruckSelect = (truckId) => {
     const assignment = assignments.find((a) => a.truckId?._id === truckId);
+    const assignmentDriverId = getAssignmentDriverId(assignment);
+
+    if (formData.assignedTo && assignmentDriverId && formData.assignedTo !== assignmentDriverId) {
+      setError("Selected truck is assigned to a different driver. Choose that assigned driver or select another truck.");
+    } else {
+      setError("");
+    }
+
     setFormData((prev) => ({
       ...prev,
       truckId,
-      assignedTo: assignment?.driverId?._id || "",
+      assignedTo: prev.assignedTo || assignmentDriverId,
       jobDate: assignment?.date ? assignment.date.split("T")[0] : prev.jobDate,
     }));
+  };
+
+  const hasAssignmentDriverConflict = () => {
+    const assignment = assignments.find((a) => a.truckId?._id === formData.truckId);
+    const assignmentDriverId = getAssignmentDriverId(assignment);
+    return Boolean(assignmentDriverId && formData.assignedTo && formData.assignedTo !== assignmentDriverId);
   };
 
   const isValidDate = () => {
@@ -174,6 +199,16 @@ const CreateJob = () => {
 
     if (requiredFields.some((field) => !formData[field])) {
       setError("Please complete every required section before creating the run.");
+      return;
+    }
+
+    if (dayjs(formData.jobDate).isBefore(dayjs(todayDate), "day")) {
+      setError("Job date cannot be in the past.");
+      return;
+    }
+
+    if (hasAssignmentDriverConflict()) {
+      setError("Selected truck is assigned to a different driver. Choose that assigned driver or select another truck.");
       return;
     }
 
@@ -250,7 +285,7 @@ const CreateJob = () => {
 
                 <SectionCard icon={<LocalShippingIcon />} title="Truck Assignment" subtitle="Use the truck already assigned to the run where possible.">
                   <TextField select fullWidth label="Select Truck" name="truckId" value={formData.truckId} onChange={(e) => handleTruckSelect(e.target.value)} required>
-                    {trucks.map((truck) => {
+                    {selectableTrucks.map((truck) => {
                       const isAssigned = assignments.some((a) => a.truckId?._id === truck._id);
                       return (
                         <MenuItem key={truck._id} value={truck._id}>
@@ -264,7 +299,7 @@ const CreateJob = () => {
 
               <SectionCard icon={<CalendarMonthIcon />} title="Schedule" subtitle="Set the run date and type.">
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
-                  <TextField fullWidth type="date" label="Run Date" name="jobDate" InputLabelProps={{ shrink: true }} value={formData.jobDate} onChange={handleChange} required />
+                  <TextField fullWidth type="date" label="Run Date" name="jobDate" InputLabelProps={{ shrink: true }} inputProps={{ min: todayDate }} value={formData.jobDate} onChange={handleChange} required />
                   <TextField select fullWidth label="Run Type" name="jobType" value={formData.jobType} onChange={handleChange} required>
                     <MenuItem value="local">Local</MenuItem>
                     <MenuItem value="interstate">Interstate</MenuItem>

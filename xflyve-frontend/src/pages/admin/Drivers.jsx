@@ -16,9 +16,10 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditIcon from "@mui/icons-material/Edit";
 import PersonAddAltIcon from "@mui/icons-material/PersonAddAlt";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import { getAllDrivers, createDriver, deleteDriver, getPublicDrivers } from "../../api";
+import { getAllDrivers, createDriver, updateDriver, deleteDriver, getPublicDrivers } from "../../api";
 
 const palette = {
   ink: "#0b1220",
@@ -32,6 +33,16 @@ const palette = {
 };
 
 const emptyDriver = { name: "", email: "", password: "" };
+const emptyEditDriver = { id: "", name: "", email: "", password: "" };
+
+const getBackendErrorMessage = (err, fallback) => {
+  const data = err.response?.data;
+  if (data?.message) return data.message;
+  if (Array.isArray(data?.errors) && data.errors.length > 0) {
+    return data.errors.map((item) => item.message).filter(Boolean).join(", ");
+  }
+  return err.message || fallback;
+};
 
 const Drivers = () => {
   const [drivers, setDrivers] = useState([]);
@@ -40,6 +51,9 @@ const Drivers = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [deleteDriverId, setDeleteDriverId] = useState(null);
+  const [editDriver, setEditDriver] = useState(emptyEditDriver);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
   const [showDemoControl, setShowDemoControl] = useState(false);
 
   const fetchDrivers = async () => {
@@ -79,12 +93,18 @@ const Drivers = () => {
     setError("");
     setSuccess("");
     try {
-      await createDriver(formData);
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+      };
+      console.log("Create driver submitted payload:", payload);
+      await createDriver(payload);
       setSuccess("Driver created successfully.");
       setFormData(emptyDriver);
       fetchDrivers();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Failed to create driver");
+      setError(getBackendErrorMessage(err, "Failed to create driver"));
     }
   };
 
@@ -99,6 +119,47 @@ const Drivers = () => {
       fetchDrivers();
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Failed to delete driver");
+    }
+  };
+
+  const openEdit = (driver) => {
+    setEditDriver({
+      id: driver._id,
+      name: driver.name || "",
+      email: driver.email || "",
+      password: "",
+    });
+    setEditOpen(true);
+    setError("");
+    setSuccess("");
+  };
+
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditDriver(emptyEditDriver);
+  };
+
+  const handleEditSubmit = async () => {
+    setError("");
+    setSuccess("");
+    setEditSubmitting(true);
+    try {
+      const payload = {
+        name: editDriver.name,
+        email: editDriver.email,
+      };
+      if (editDriver.password.trim()) {
+        payload.password = editDriver.password;
+      }
+
+      await updateDriver(editDriver.id, payload);
+      setSuccess("Driver updated successfully.");
+      closeEdit();
+      fetchDrivers();
+    } catch (err) {
+      setError(getBackendErrorMessage(err, "Failed to update driver"));
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -166,9 +227,14 @@ const Drivers = () => {
                       <Stack direction="row" spacing={1} flexWrap="wrap">
                         <Chip label={driver.role || "driver"} sx={{ fontWeight: 850 }} />
                       </Stack>
-                      <Button variant="outlined" color="error" startIcon={<DeleteOutlineIcon />} onClick={() => setDeleteDriverId(driver._id)} disabled={!driver._id} sx={{ minHeight: 48, borderRadius: 3, fontWeight: 900 }}>
-                        Delete Driver
-                      </Button>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                        <Button fullWidth variant="contained" startIcon={<EditIcon />} onClick={() => openEdit(driver)} disabled={!driver._id} sx={{ minHeight: 48, borderRadius: 3, bgcolor: palette.ink, fontWeight: 900 }}>
+                          Edit
+                        </Button>
+                        <Button fullWidth variant="outlined" color="error" startIcon={<DeleteOutlineIcon />} onClick={() => setDeleteDriverId(driver._id)} disabled={!driver._id} sx={{ minHeight: 48, borderRadius: 3, fontWeight: 900 }}>
+                          Delete
+                        </Button>
+                      </Stack>
                     </Stack>
                   </Paper>
                 ))}
@@ -185,6 +251,29 @@ const Drivers = () => {
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={() => setDeleteDriverId(null)}>Cancel</Button>
             <Button onClick={handleDeleteConfirm} color="error" variant="contained">Delete</Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={editOpen} onClose={closeEdit} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 5 } }}>
+          <DialogTitle sx={{ fontWeight: 950 }}>Edit Driver</DialogTitle>
+          <DialogContent>
+            <Stack spacing={1.5} sx={{ pt: 1 }}>
+              <TextField label="Name" value={editDriver.name} onChange={(e) => setEditDriver((p) => ({ ...p, name: e.target.value }))} required fullWidth />
+              <TextField label="Email" type="email" value={editDriver.email} onChange={(e) => setEditDriver((p) => ({ ...p, email: e.target.value }))} required fullWidth />
+              <TextField
+                label="New password (leave blank to keep current password)"
+                type="password"
+                value={editDriver.password}
+                onChange={(e) => setEditDriver((p) => ({ ...p, password: e.target.value }))}
+                fullWidth
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={closeEdit}>Cancel</Button>
+            <Button onClick={handleEditSubmit} variant="contained" disabled={editSubmitting} sx={{ bgcolor: palette.ink, fontWeight: 900 }}>
+              {editSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
           </DialogActions>
         </Dialog>
       </Box>

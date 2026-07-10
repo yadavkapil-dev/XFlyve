@@ -46,6 +46,15 @@ const formatDate = (value) => {
   return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 };
 
+const getLogJob = (log) => (Array.isArray(log.jobIds) && log.jobIds.length > 0 ? log.jobIds[0] : null);
+
+const getLogJobType = (log) => {
+  const job = getLogJob(log);
+  if (job?.jobType) return job.jobType;
+  if (log.interstateStartKm !== undefined || log.interstateEndKm !== undefined) return "interstate";
+  return "local";
+};
+
 const StatPill = ({ icon, label, value }) => (
   <Paper elevation={0} sx={{ p: 1.4, borderRadius: 3, border: "1px solid", borderColor: palette.line, bgcolor: alpha("#fff", 0.74), minWidth: 0 }}>
     <Stack direction="row" spacing={1.1} alignItems="center">
@@ -148,6 +157,35 @@ const WorkLogs = () => {
     return <Chip label={status} sx={{ color, bgcolor: alpha(color, 0.1), fontWeight: 900, textTransform: "capitalize" }} />;
   };
 
+  const logSummary = (log) => {
+    if (getLogJobType(log) === "interstate") {
+      return `KM ${log.interstateStartKm ?? "—"} → ${log.interstateEndKm ?? "—"} · ${log.deliveriesDone ?? 0} deliveries`;
+    }
+
+    return `${log.localStartTime || "—"} → ${log.localEndTime || "—"} · ${log.hours ?? 0} hrs · ${log.deliveriesDone ?? 0} deliveries`;
+  };
+
+  const renderLogStats = (log) => {
+    if (getLogJobType(log) === "interstate") {
+      return (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
+          <StatPill icon={<SpeedIcon />} label="Start km" value={log.interstateStartKm ?? "—"} />
+          <StatPill icon={<SpeedIcon />} label="End km" value={log.interstateEndKm ?? "—"} />
+          <StatPill icon={<FactCheckIcon />} label="Deliveries" value={log.deliveriesDone ?? 0} />
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(4, 1fr)" }, gap: 1 }}>
+        <StatPill icon={<TimerOutlinedIcon />} label="Pickup" value={log.localStartTime || "—"} />
+        <StatPill icon={<TimerOutlinedIcon />} label="Finish" value={log.localEndTime || "—"} />
+        <StatPill icon={<FactCheckIcon />} label="Deliveries" value={log.deliveriesDone ?? 0} />
+        <StatPill icon={<TimerOutlinedIcon />} label="Hours" value={log.hours ?? 0} />
+      </Box>
+    );
+  };
+
   const refreshAfterAction = async () => {
     await Promise.all([
       fetchReviewQueues(),
@@ -224,7 +262,7 @@ const WorkLogs = () => {
                       <Stack spacing={1.5}>
                         <Box>
                           <Typography fontWeight={950} sx={{ color: palette.ink }}>{log.driverId?.name || "Unknown driver"} · {formatDate(log.workDate || log.date)}</Typography>
-                          <Typography variant="body2" sx={{ color: palette.muted }}>{log.hours ?? 0} hrs · {log.kilometers ?? 0} km · {log.deliveriesDone ?? 0} deliveries</Typography>
+                          <Typography variant="body2" sx={{ color: palette.muted }}>{logSummary(log)}</Typography>
                         </Box>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                           <Button disabled={actionId === log._id} variant="contained" startIcon={<CheckCircleOutlineIcon />} onClick={() => handleApprove(log._id)} sx={{ borderRadius: 3, bgcolor: palette.ink, fontWeight: 900 }}>Approve</Button>
@@ -303,19 +341,13 @@ const WorkLogs = () => {
                     <Box>
                       <Typography fontWeight={950} sx={{ color: palette.ink }}>{log.driverId?.name || "Unknown driver"}</Typography>
                       <Typography variant="body2" sx={{ color: palette.muted }}>{formatDate(log.date)}</Typography>
+                      {getLogJob(log)?.title && (
+                        <Typography variant="body2" sx={{ color: palette.muted }}>{getLogJob(log).title} · {getLogJobType(log)}</Typography>
+                      )}
                     </Box>
                     {statusChip(log.status)}
                   </Stack>
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
-                    <StatPill icon={<TimerOutlinedIcon />} label="Hours" value={log.hours ?? 0} />
-                    <StatPill icon={<SpeedIcon />} label="Kilometres" value={log.kilometers ?? 0} />
-                    <StatPill icon={<FactCheckIcon />} label="Deliveries" value={log.deliveriesDone ?? 0} />
-                  </Box>
-                  {(log.localStartTime || log.localEndTime || log.interstateStartKm || log.interstateEndKm) && (
-                    <Typography variant="body2" sx={{ color: palette.muted }}>
-                      Optional details: {log.localStartTime || "—"} → {log.localEndTime || "—"} · KM {log.interstateStartKm ?? "—"} → {log.interstateEndKm ?? "—"}
-                    </Typography>
-                  )}
+                  {renderLogStats(log)}
                   {log.notes && <Chip icon={<NotesIcon />} label={log.notes} sx={{ alignSelf: "flex-start", maxWidth: "100%" }} />}
                   {log.status === "pending" && (
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>

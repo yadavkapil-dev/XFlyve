@@ -9,9 +9,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  MenuItem,
+  FormControlLabel,
   Paper,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -22,7 +23,6 @@ import EditIcon from "@mui/icons-material/Edit";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import { getAllTrucks, createTruck, updateTruck, deleteTruck } from "../../api";
 
-const statusOptions = ["available", "on route", "maintenance"];
 const palette = {
   ink: "#0b1220",
   muted: "#697586",
@@ -38,8 +38,8 @@ const palette = {
 };
 
 const statusMeta = (status) => {
-  if (status === "maintenance") return { color: palette.rose, label: "Maintenance" };
-  if (status === "on route") return { color: palette.amber, label: "On route" };
+  if (status === "out-of-service" || status === "maintenance") return { color: palette.rose, label: "Out of service" };
+  if (status === "on-route" || status === "on route") return { color: palette.amber, label: "On route" };
   return { color: palette.emerald, label: "Available" };
 };
 
@@ -48,11 +48,11 @@ const Trucks = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [formData, setFormData] = useState({ truckNumber: "", capacity: "", status: "available" });
+  const [formData, setFormData] = useState({ truckNumber: "", capacity: "", outOfService: false });
   const [editTruckId, setEditTruckId] = useState(null);
   const [deleteTruckId, setDeleteTruckId] = useState(null);
 
-  const maintenanceTrucks = useMemo(() => trucks.filter((truck) => truck.status === "maintenance"), [trucks]);
+  const outOfServiceTrucks = useMemo(() => trucks.filter((truck) => truck.status === "out-of-service" || truck.status === "maintenance"), [trucks]);
 
   const fetchTrucks = async () => {
     setLoading(true);
@@ -72,7 +72,7 @@ const Trucks = () => {
 
   const resetForm = () => {
     setEditTruckId(null);
-    setFormData({ truckNumber: "", capacity: "", status: "available" });
+    setFormData({ truckNumber: "", capacity: "", outOfService: false });
   };
 
   const handleSubmit = async (e) => {
@@ -81,11 +81,17 @@ const Trucks = () => {
     setSuccess("");
     if (!formData.truckNumber || !formData.capacity) return setError("Please fill all required fields");
     try {
+      const payload = {
+        truckNumber: formData.truckNumber,
+        capacity: formData.capacity,
+      };
+      if (formData.outOfService) payload.status = "out-of-service";
+      if (editTruckId && !formData.outOfService) payload.status = "available";
       if (editTruckId) {
-        await updateTruck(editTruckId, formData);
+        await updateTruck(editTruckId, payload);
         setSuccess("Truck updated successfully.");
       } else {
-        await createTruck(formData);
+        await createTruck(payload);
         setSuccess("Truck created successfully.");
       }
       resetForm();
@@ -97,7 +103,11 @@ const Trucks = () => {
 
   const handleEdit = (truck) => {
     setEditTruckId(truck._id);
-    setFormData({ truckNumber: truck.truckNumber, capacity: truck.capacity, status: truck.status });
+    setFormData({
+      truckNumber: truck.truckNumber,
+      capacity: truck.capacity,
+      outOfService: truck.status === "out-of-service" || truck.status === "maintenance",
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -127,9 +137,9 @@ const Trucks = () => {
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2, borderRadius: 3 }}>{success}</Alert>}
 
-        {maintenanceTrucks.length > 0 && (
+        {outOfServiceTrucks.length > 0 && (
           <Alert severity="warning" sx={{ mb: 2, borderRadius: 3 }}>
-            {maintenanceTrucks.length} truck{maintenanceTrucks.length === 1 ? "" : "s"} currently marked for maintenance.
+            {outOfServiceTrucks.length} truck{outOfServiceTrucks.length === 1 ? "" : "s"} currently marked out of service.
           </Alert>
         )}
 
@@ -145,9 +155,10 @@ const Trucks = () => {
             <Stack spacing={1.5}>
               <TextField label="Truck Number" name="truckNumber" value={formData.truckNumber} onChange={(e) => setFormData((p) => ({ ...p, truckNumber: e.target.value.toUpperCase() }))} required fullWidth disabled={Boolean(editTruckId)} />
               <TextField label="Capacity" name="capacity" type="number" value={formData.capacity} onChange={(e) => setFormData((p) => ({ ...p, capacity: e.target.value }))} required fullWidth inputProps={{ min: 0 }} />
-              <TextField select label="Status" name="status" value={formData.status} onChange={(e) => setFormData((p) => ({ ...p, status: e.target.value }))} fullWidth>
-                {statusOptions.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-              </TextField>
+              <FormControlLabel
+                control={<Switch checked={formData.outOfService} onChange={(e) => setFormData((p) => ({ ...p, outOfService: e.target.checked }))} />}
+                label="Out of service"
+              />
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                 <Button type="submit" fullWidth variant="contained" size="large" sx={{ minHeight: 56, borderRadius: 3, bgcolor: palette.ink, fontWeight: 950 }}>
                   {editTruckId ? "Update Truck" : "Create Truck"}
@@ -180,10 +191,10 @@ const Trucks = () => {
                           </Box>
                           <Chip label={meta.label} sx={{ color: meta.color, bgcolor: alpha(meta.color, 0.1), fontWeight: 900 }} />
                         </Stack>
-                        {truck.status === "maintenance" && (
+                        {(truck.status === "out-of-service" || truck.status === "maintenance") && (
                           <Stack direction="row" spacing={1} alignItems="center" sx={{ color: palette.rose }}>
                             <BuildCircleOutlinedIcon fontSize="small" />
-                            <Typography variant="body2" fontWeight={850}>Maintenance attention needed</Typography>
+                            <Typography variant="body2" fontWeight={850}>Cannot be assigned to jobs</Typography>
                           </Stack>
                         )}
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>

@@ -5,14 +5,26 @@ const adminController = require("../controllers/adminController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const { requireAdmin } = require("../middlewares/roleMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
-const { driverCreationValidator } = require("../validators/authValidator");
+const { driverCreationValidator, driverUpdateValidator } = require("../validators/authValidator");
 const Driver = require("../models/driver");
 
 /* ==========================================================
    🔐 PROTECTED ADMIN ROUTES (Requires Token + Admin Role)
    ========================================================== */
 router.get("/drivers", authMiddleware, requireAdmin, adminController.getAllDrivers);
-router.post("/drivers", authMiddleware, requireAdmin, driverCreationValidator, validateRequest, adminController.createDriver);
+router.post(
+  "/drivers",
+  authMiddleware,
+  requireAdmin,
+  (req, res, next) => {
+    console.log("Create driver submitted payload:", req.body);
+    next();
+  },
+  driverCreationValidator,
+  validateRequest,
+  adminController.createDriver
+);
+router.put("/drivers/:driverId", authMiddleware, requireAdmin, driverUpdateValidator, validateRequest, adminController.updateDriver);
 router.delete("/drivers/:driverId", authMiddleware, requireAdmin, adminController.deleteDriver);
 router.get("/export-drivers", authMiddleware, requireAdmin, adminController.exportDriversExcel);
 router.get("/stats", authMiddleware, requireAdmin, adminController.getSystemStats);

@@ -16,7 +16,7 @@ exports.truckCreateValidator = [
     .withMessage("Capacity must be a number"),
   body("status")
     .optional()
-    .isIn(["available", "on route", "maintenance"])
+    .isIn(["out-of-service"])
     .withMessage("Invalid status"),
   body("recordStatus")
     .optional()
@@ -46,7 +46,7 @@ exports.truckUpdateValidator = [
     .withMessage("Capacity must be a number"),
   body("status")
     .optional()
-    .isIn(["available", "on route", "maintenance"])
+    .isIn(["available", "out-of-service"])
     .withMessage("Invalid status"),
   body("recordStatus")
     .optional()

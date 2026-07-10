@@ -7,12 +7,25 @@ const { validationResult } = require("express-validator");
 const validateRequest = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(422).json({
+    const validationErrors = errors.array().map(err => ({
+      field: err.path || err.param,
+      message: err.msg,
+    }));
+
+    if (req.method === "POST" && req.originalUrl === "/api/admin/drivers") {
+      console.log("Create driver validation errors:", validationErrors);
+    }
+
+    const statusCode =
+      req.method === "PUT" && /^\/api\/admin\/drivers\/[^/]+$/.test(req.originalUrl)
+        ? 400
+        : 422;
+
+    return res.status(statusCode).json({
       success: false,
-      errors: errors.array().map(err => ({
-        field: err.param,
-        message: err.msg,
-      })),
+      status: "fail",
+      message: validationErrors.map(err => err.message).join(", "),
+      errors: validationErrors,
     });
   }
   next();

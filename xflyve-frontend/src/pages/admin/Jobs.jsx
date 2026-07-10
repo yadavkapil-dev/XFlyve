@@ -46,6 +46,14 @@ const statusMeta = (status) => {
   return { label: "Pending", color: palette.amber };
 };
 
+const isSelectableTruck = (truck) =>
+  !["out-of-service", "maintenance", "on-route", "on route"].includes(truck.status);
+
+const getAssignmentDriverId = (assignment) => {
+  if (!assignment?.driverId) return "";
+  return assignment.driverId._id || assignment.driverId;
+};
+
 const DetailPill = ({ icon, label, value }) => (
   <Paper elevation={0} sx={{ p: 1.4, borderRadius: 3, border: "1px solid", borderColor: palette.line, bgcolor: alpha("#fff", 0.74), minWidth: 0 }}>
     <Stack direction="row" spacing={1.1} alignItems="center">
@@ -73,9 +81,7 @@ const Jobs = () => {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filterDriver, setFilterDriver] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterStartDate, setFilterStartDate] = useState("");
-  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterDate, setFilterDate] = useState("");
 
   const navigate = useNavigate();
 
@@ -114,11 +120,12 @@ const Jobs = () => {
   const filteredJobs = useMemo(() => {
     return jobs
       .filter((job) => (filterDriver ? job.assignedTo?._id === filterDriver : true))
-      .filter((job) => (filterStatus ? job.status === filterStatus : true))
-      .filter((job) => (filterStartDate ? dayjs(job.jobDate).isAfter(dayjs(filterStartDate).subtract(1, "day")) : true))
-      .filter((job) => (filterEndDate ? dayjs(job.jobDate).isBefore(dayjs(filterEndDate).add(1, "day")) : true))
+      .filter((job) => (filterDate ? dayjs(job.jobDate).isSame(dayjs(filterDate), "day") : true))
       .sort((a, b) => new Date(a.jobDate) - new Date(b.jobDate));
-  }, [jobs, filterDriver, filterStatus, filterStartDate, filterEndDate]);
+  }, [jobs, filterDriver, filterDate]);
+
+  const selectableTrucks = useMemo(() => trucks.filter(isSelectableTruck), [trucks]);
+  const selectedEditTruck = trucks.find((truck) => truck._id === editJob?.truckId);
 
   const openEdit = (job) => {
     setEditJob({
@@ -141,12 +148,26 @@ const Jobs = () => {
   const handleTruckChange = (e) => {
     const truckId = e.target.value;
     const assignment = assignments.find((a) => a.truckId?._id === truckId);
+    const assignmentDriverId = getAssignmentDriverId(assignment);
+
+    if (editJob?.assignedTo && assignmentDriverId && editJob.assignedTo !== assignmentDriverId) {
+      setEditError("Selected truck is assigned to a different driver. Choose that assigned driver or select another truck.");
+    } else {
+      setEditError("");
+    }
+
     setEditJob((prev) => ({
       ...prev,
       truckId,
-      assignedTo: assignment?.driverId?._id || "",
+      assignedTo: prev.assignedTo || assignmentDriverId,
       jobDate: assignment?.date ? assignment.date.split("T")[0] : prev.jobDate,
     }));
+  };
+
+  const hasEditAssignmentDriverConflict = () => {
+    const assignment = assignments.find((a) => a.truckId?._id === editJob?.truckId);
+    const assignmentDriverId = getAssignmentDriverId(assignment);
+    return Boolean(assignmentDriverId && editJob?.assignedTo && editJob.assignedTo !== assignmentDriverId);
   };
 
   const handleEditSubmit = async () => {
@@ -154,6 +175,12 @@ const Jobs = () => {
       setEditError("Please fill all required fields");
       return;
     }
+
+    if (hasEditAssignmentDriverConflict()) {
+      setEditError("Selected truck is assigned to a different driver. Choose that assigned driver or select another truck.");
+      return;
+    }
+
     setEditSubmitting(true);
     setEditError("");
     try {
@@ -206,20 +233,13 @@ const Jobs = () => {
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
 
         <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.2fr 1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.2fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
             <TextField select fullWidth label="Driver" value={filterDriver} onChange={(e) => setFilterDriver(e.target.value)}>
               <MenuItem value="">All Drivers</MenuItem>
               {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
             </TextField>
-            <TextField select fullWidth label="Status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-              <MenuItem value="">All Statuses</MenuItem>
-              <MenuItem value="pending">Pending</MenuItem>
-              <MenuItem value="in-progress">In progress</MenuItem>
-              <MenuItem value="completed">Completed</MenuItem>
-            </TextField>
-            <TextField fullWidth type="date" label="Start Date" InputLabelProps={{ shrink: true }} value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
-            <TextField fullWidth type="date" label="End Date" InputLabelProps={{ shrink: true }} value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
-            <Button variant="outlined" onClick={() => { setFilterDriver(""); setFilterStatus(""); setFilterStartDate(""); setFilterEndDate(""); }} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
+            <TextField fullWidth type="date" label="Run Date" InputLabelProps={{ shrink: true }} value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+            <Button variant="outlined" onClick={() => { setFilterDriver(""); setFilterDate(""); }} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
               Clear
             </Button>
           </Box>
@@ -275,7 +295,10 @@ const Jobs = () => {
               <TextField fullWidth label="Pickup" name="pickupLocation" value={editJob?.pickupLocation || ""} onChange={handleEditChange} required />
               <TextField fullWidth label="Delivery" name="deliveryLocation" value={editJob?.deliveryLocation || ""} onChange={handleEditChange} required />
               <TextField select fullWidth label="Truck" name="truckId" value={editJob?.truckId || ""} onChange={handleTruckChange} required>
-                {trucks.map((truck) => <MenuItem key={truck._id} value={truck._id}>{truck.truckNumber}</MenuItem>)}
+                {selectedEditTruck && !isSelectableTruck(selectedEditTruck) && (
+                  <MenuItem value={selectedEditTruck._id} disabled>{selectedEditTruck.truckNumber} · unavailable</MenuItem>
+                )}
+                {selectableTrucks.map((truck) => <MenuItem key={truck._id} value={truck._id}>{truck.truckNumber}</MenuItem>)}
               </TextField>
               <TextField select fullWidth label="Driver" name="assignedTo" value={editJob?.assignedTo || ""} onChange={handleEditChange} required>
                 {drivers.map((driver) => <MenuItem key={driver._id} value={driver._id}>{driver.name}</MenuItem>)}

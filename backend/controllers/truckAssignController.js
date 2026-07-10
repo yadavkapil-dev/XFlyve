@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const TruckAssignment = require("../models/dailyTruckAssignment");
+const Truck = require("../models/truck");
 const logger = require("../utils/logger");
 
 const normalizeDateOnly = (value) => {
@@ -41,6 +42,9 @@ const findAssignmentConflict = async ({ driverId, truckId, date, excludeId }) =>
   return null;
 };
 
+const isTruckUnavailable = (truck) =>
+  !truck || truck.recordStatus === "archived" || truck.status !== "available";
+
 /**
  * @desc Assign a truck to a driver on a specific date
  * @route POST /api/truck-assignments
@@ -57,6 +61,14 @@ exports.assignTruck = async (req, res) => {
     const normalizedDate = normalizeDateOnly(date);
     if (!normalizedDate) {
       return res.status(400).json({ success: false, message: "Invalid date" });
+    }
+
+    const truck = await Truck.findById(truckId).lean();
+    if (isTruckUnavailable(truck)) {
+      return res.status(409).json({
+        success: false,
+        message: "Truck is not available for assignment",
+      });
     }
 
     const conflict = await findAssignmentConflict({ truckId, driverId, date: normalizedDate });
@@ -176,6 +188,14 @@ exports.updateAssignment = async (req, res) => {
     const normalizedDate = normalizeDateOnly(date);
     if (!normalizedDate) {
       return res.status(400).json({ success: false, message: "Invalid date" });
+    }
+
+    const truck = await Truck.findById(truckId).lean();
+    if (isTruckUnavailable(truck)) {
+      return res.status(409).json({
+        success: false,
+        message: "Truck is not available for assignment",
+      });
     }
 
     const conflict = await findAssignmentConflict({

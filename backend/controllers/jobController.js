@@ -1,5 +1,6 @@
 const Job = require("../models/job");
 const Driver = require("../models/driver");
+const Truck = require("../models/truck");
 const logger = require("../utils/logger");
 
 const DRIVER_STATUS_TRANSITIONS = {
@@ -19,6 +20,28 @@ const normalizeDateOnly = (value) => {
   return new Date(`${date.toISOString().slice(0, 10)}T00:00:00.000Z`);
 };
 
+const calendarDateKey = (value) => {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isPastCalendarDate = (value) => {
+  const selectedDate = calendarDateKey(value);
+  const today = calendarDateKey(new Date());
+  return Boolean(selectedDate && today && selectedDate < today);
+};
+
+const isSameCalendarDate = (left, right) =>
+  calendarDateKey(left) === calendarDateKey(right);
+
 const dateRangeFor = (value) => {
   const start = normalizeDateOnly(value);
   if (!start) return null;
@@ -37,6 +60,31 @@ const findTruckJobConflict = async ({ assignedTruck, jobDate, excludeJobId }) =>
     ...(excludeJobId ? { _id: { $ne: excludeJobId } } : {}),
     jobDate: { $gte: range.start, $lt: range.end },
   }).lean();
+};
+
+const findInProgressTruckJob = async ({ assignedTruck, excludeJobId }) => {
+  return Job.findOne({
+    assignedTruck,
+    status: "in-progress",
+    recordStatus: { $ne: "archived" },
+    ...(excludeJobId ? { _id: { $ne: excludeJobId } } : {}),
+  }).lean();
+};
+
+const isTruckUnavailable = (truck) =>
+  !truck || truck.recordStatus === "archived" || truck.status !== "available";
+
+const setTruckOnRoute = async (truck, jobId) => {
+  truck.status = "on-route";
+  truck.assignedJob = jobId;
+  await truck.save();
+};
+
+const setTruckAvailable = async (truckId) => {
+  await Truck.updateOne(
+    { _id: truckId, recordStatus: { $ne: "archived" } },
+    { status: "available", assignedJob: null }
+  );
 };
 
 // @desc    Create a new job
@@ -70,6 +118,14 @@ exports.createJob = async (req, res) => {
       return res.status(400).json({ status: "fail", message: "Assigned truck is required" });
     }
 
+    const truck = await Truck.findById(assignedTruck).lean();
+    if (isTruckUnavailable(truck)) {
+      return res.status(409).json({
+        status: "fail",
+        message: "Truck is not available for assignment",
+      });
+    }
+
     if (!jobDate) {
       return res.status(400).json({ status: "fail", message: "Job date is required" });
     }
@@ -77,6 +133,10 @@ exports.createJob = async (req, res) => {
     const normalizedJobDate = normalizeDateOnly(jobDate);
     if (!normalizedJobDate) {
       return res.status(400).json({ status: "fail", message: "Invalid job date" });
+    }
+
+    if (isPastCalendarDate(jobDate)) {
+      return res.status(400).json({ status: "fail", message: "Job date cannot be in the past." });
     }
 
     // ✅ Prevent assigning the same truck twice on the same day
@@ -200,6 +260,7 @@ exports.markJobComplete = async (req, res) => {
 
     job.status = "completed";
     await job.save();
+    await setTruckAvailable(job.assignedTruck);
 
     const updatedJob = await Job.findById(job._id)
       .populate("assignedTruck", "truckNumber")
@@ -292,8 +353,40 @@ exports.updateJob = async (req, res) => {
         });
       }
 
+      if (status === "in-progress") {
+        const truck = await Truck.findById(job.assignedTruck);
+        if (isTruckUnavailable(truck)) {
+          return res.status(409).json({
+            status: "fail",
+            message: "Truck is out of service and cannot start a job",
+          });
+        }
+
+        const activeTruckJob = await findInProgressTruckJob({
+          assignedTruck: job.assignedTruck,
+          excludeJobId: jobId,
+        });
+        if (activeTruckJob) {
+          return res.status(409).json({
+            status: "fail",
+            message: "This truck is already on an in-progress job",
+          });
+        }
+
+        job.status = status;
+        await job.save();
+        await setTruckOnRoute(truck, job._id);
+
+        const updatedJob = await Job.findById(jobId)
+          .populate("assignedTruck", "truckNumber")
+          .lean();
+
+        return res.status(200).json({ status: "success", data: updatedJob });
+      }
+
       job.status = status;
       await job.save();
+      await setTruckAvailable(job.assignedTruck);
 
       const updatedJob = await Job.findById(jobId)
         .populate("assignedTruck", "truckNumber")
@@ -315,6 +408,24 @@ exports.updateJob = async (req, res) => {
 
     if (jobDate !== undefined && !nextJobDate) {
       return res.status(400).json({ status: "fail", message: "Invalid job date" });
+    }
+
+    if (
+      jobDate !== undefined &&
+      isPastCalendarDate(jobDate) &&
+      !isSameCalendarDate(nextJobDate, job.jobDate)
+    ) {
+      return res.status(400).json({ status: "fail", message: "Job date cannot be in the past." });
+    }
+
+    if (assignedTruck !== undefined) {
+      const truck = await Truck.findById(nextAssignedTruck).lean();
+      if (isTruckUnavailable(truck)) {
+        return res.status(409).json({
+          status: "fail",
+          message: "Truck is not available for assignment",
+        });
+      }
     }
 
     if (assignedTruck !== undefined || jobDate !== undefined) {

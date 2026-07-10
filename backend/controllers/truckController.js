@@ -34,12 +34,37 @@ exports.getAllTrucks = async (req, res) => {
 exports.addTruck = async (req, res) => {
   try {
     const { truckNumber, model, capacity, status, recordStatus, assignedDriver, lastMaintenanceDate } = req.body;
+    const normalizedTruckNumber = truckNumber.trim().toUpperCase();
+
+    const existingTruck = await Truck.findOne({ truckNumber: normalizedTruckNumber });
+    if (existingTruck && existingTruck.recordStatus !== "archived") {
+      return res.status(409).json({
+        success: false,
+        message: "A truck with this truck number already exists",
+      });
+    }
+
+    if (existingTruck) {
+      existingTruck.capacity = capacity;
+      existingTruck.status = status === "out-of-service" ? "out-of-service" : "available";
+      existingTruck.recordStatus = "active";
+      existingTruck.assignedDriver = assignedDriver;
+      existingTruck.assignedJob = null;
+      existingTruck.lastMaintenanceDate = lastMaintenanceDate;
+      await existingTruck.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "Truck added",
+        data: existingTruck,
+      });
+    }
 
     const newTruck = new Truck({
-      truckNumber,
+      truckNumber: normalizedTruckNumber,
       model,
       capacity,
-      status,
+      status: status === "out-of-service" ? "out-of-service" : "available",
       recordStatus,
       assignedDriver,
       lastMaintenanceDate,
@@ -53,6 +78,13 @@ exports.addTruck = async (req, res) => {
       data: newTruck,
     });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "A truck with this truck number already exists",
+      });
+    }
+
     logger.error("Add truck error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }
@@ -71,16 +103,42 @@ exports.updateTruck = async (req, res) => {
   }
 
   try {
-    const updatedTruck = await Truck.findByIdAndUpdate(truckId, req.body, { new: true });
+    const truck = await Truck.findById(truckId);
 
-    if (!updatedTruck) {
+    if (!truck) {
       return res.status(404).json({ success: false, message: "Truck not found" });
     }
+
+    const { truckNumber, capacity, status, recordStatus, assignedDriver, lastMaintenanceDate } = req.body;
+
+    if (status === "out-of-service") {
+      const activeJob = await Job.exists({
+        assignedTruck: truckId,
+        status: "in-progress",
+        recordStatus: { $ne: "archived" },
+      });
+
+      if (activeJob) {
+        return res.status(409).json({
+          success: false,
+          message: "Cannot mark truck out of service while it has an in-progress job",
+        });
+      }
+    }
+
+    if (truckNumber !== undefined) truck.truckNumber = truckNumber;
+    if (capacity !== undefined) truck.capacity = capacity;
+    if (status !== undefined) truck.status = status;
+    if (recordStatus !== undefined) truck.recordStatus = recordStatus;
+    if (assignedDriver !== undefined) truck.assignedDriver = assignedDriver;
+    if (lastMaintenanceDate !== undefined) truck.lastMaintenanceDate = lastMaintenanceDate;
+
+    await truck.save();
 
     return res.status(200).json({
       success: true,
       message: "Truck updated",
-      data: updatedTruck,
+      data: truck,
     });
   } catch (err) {
     logger.error("Update truck error: %o", err);

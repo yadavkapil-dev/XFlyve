@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const DailyWorkLog = require("../models/dailyWorkLog");
+const Job = require("../models/job");
 const logger = require("../utils/logger");
 
 const normalizeDateOnly = (value) => {
@@ -14,13 +15,110 @@ const normalizeDateOnly = (value) => {
   return new Date(`${date.toISOString().slice(0, 10)}T00:00:00.000Z`);
 };
 
+const toNumber = (value) => {
+  if (value === "" || value === undefined || value === null) return undefined;
+  return Number(value);
+};
+
+const validateNonNegativeNumber = (value, label, required = false) => {
+  const numberValue = toNumber(value);
+  if (numberValue === undefined) {
+    return required ? `${label} is required` : null;
+  }
+  if (Number.isNaN(numberValue) || numberValue < 0) {
+    return `${label} must be a non-negative number`;
+  }
+  return null;
+};
+
+const getPrimaryJobId = (body, fallbackLog) => {
+  const normalizeId = (value) => {
+    if (!value) return null;
+    if (typeof value === "object") return value._id || value.id || null;
+    return value;
+  };
+
+  if (body.jobId) return normalizeId(body.jobId);
+  if (Array.isArray(body.jobIds) && body.jobIds.length > 0) return normalizeId(body.jobIds[0]);
+  if (fallbackLog?.jobIds?.length) return normalizeId(fallbackLog.jobIds[0]);
+  return null;
+};
+
+const findDriverJob = async (jobId, driverId) => {
+  if (!jobId || !mongoose.Types.ObjectId.isValid(jobId)) return null;
+  return Job.findOne({
+    _id: jobId,
+    assignedTo: driverId,
+    recordStatus: { $ne: "archived" },
+  }).lean();
+};
+
+const validateAndBuildWorkLogFields = async ({ body, driverId, existingLog }) => {
+  const jobId = getPrimaryJobId(body, existingLog);
+  const job = await findDriverJob(jobId, driverId);
+  if (!job) {
+    return { error: "A valid assigned job is required" };
+  }
+
+  const deliveriesError = validateNonNegativeNumber(body.deliveriesDone, "Number of deliveries", true);
+  if (deliveriesError) return { error: deliveriesError };
+
+  if (job.jobType === "local") {
+    if (!body.localStartTime) return { error: "Truck pickup time is required" };
+    if (!body.localEndTime) return { error: "Finish time is required" };
+
+    const hoursError = validateNonNegativeNumber(body.hours, "Total hours", true);
+    if (hoursError) return { error: hoursError };
+
+    return {
+      job,
+      fields: {
+        jobIds: [job._id],
+        hours: Number(body.hours),
+        kilometers: 0,
+        localStartTime: body.localStartTime,
+        localEndTime: body.localEndTime,
+        interstateStartKm: undefined,
+        interstateEndKm: undefined,
+        deliveriesDone: Number(body.deliveriesDone),
+      },
+    };
+  }
+
+  const startKmError = validateNonNegativeNumber(body.interstateStartKm, "Start kilometres", true);
+  if (startKmError) return { error: startKmError };
+
+  const endKmError = validateNonNegativeNumber(body.interstateEndKm, "End kilometres", true);
+  if (endKmError) return { error: endKmError };
+
+  const startKm = Number(body.interstateStartKm);
+  const endKm = Number(body.interstateEndKm);
+  if (endKm < startKm) {
+    return { error: "End kilometres cannot be less than start kilometres" };
+  }
+
+  return {
+    job,
+    fields: {
+      jobIds: [job._id],
+      hours: 0,
+      kilometers: endKm - startKm,
+      localStartTime: undefined,
+      localEndTime: undefined,
+      interstateStartKm: startKm,
+      interstateEndKm: endKm,
+      deliveriesDone: Number(body.deliveriesDone),
+    },
+  };
+};
+
 /**
  * Create a new daily work log.
  * Uses driverId from JWT token (req.user.id)
  * Driver-created records are independent daily work and are not job-linked.
  */
 exports.createWorkLog = async (req, res) => {
-  const { date, workDate, hours, kilometers, notes, localStartTime, localEndTime, interstateStartKm, interstateEndKm, deliveriesDone, deliveryLocations } = req.body;
+  const { date, workDate, notes, deliveryLocations } = req.body;
   const driverId = req.user.id || req.user._id; // use driverId from token
   const effectiveDate = workDate || date;
 
@@ -37,20 +135,18 @@ exports.createWorkLog = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid work date" });
     }
 
+    const validation = await validateAndBuildWorkLogFields({ body: req.body, driverId });
+    if (validation.error) {
+      return res.status(400).json({ success: false, message: validation.error });
+    }
+
     const newLog = new DailyWorkLog({
       driverId,
       date: normalizedWorkDate,
       workDate: normalizedWorkDate,
-      hours,
-      kilometers,
       notes,
-      localStartTime,
-      localEndTime,
-      interstateStartKm,
-      interstateEndKm,
-      deliveriesDone,
       deliveryLocations,
-      jobIds: [],
+      ...validation.fields,
     });
 
     await newLog.save();
@@ -86,7 +182,8 @@ exports.getLogsByDriver = async (req, res) => {
   }
 
   try {
-    const logs = await DailyWorkLog.find({ driverId });
+    const logs = await DailyWorkLog.find({ driverId })
+      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType");
     return res.status(200).json({
       success: true,
       data: logs,
@@ -111,7 +208,8 @@ exports.getMyLogs = async (req, res) => {
   }
 
   try {
-    const logs = await DailyWorkLog.find({ driverId });
+    const logs = await DailyWorkLog.find({ driverId })
+      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType");
     return res.status(200).json({
       success: true,
       data: logs,
@@ -144,6 +242,8 @@ exports.updateWorkLog = async (req, res) => {
     "hours",
     "kilometers",
     "notes",
+    "jobId",
+    "jobIds",
     "localStartTime",
     "localEndTime",
     "interstateStartKm",
@@ -186,6 +286,30 @@ exports.updateWorkLog = async (req, res) => {
       }
       updates.date = normalizedWorkDate;
       updates.workDate = normalizedWorkDate;
+    }
+
+    if (updates.jobId !== undefined || updates.jobIds !== undefined || log.jobIds?.length) {
+      const validationBody = {
+        jobIds: log.jobIds,
+        hours: log.hours,
+        localStartTime: log.localStartTime,
+        localEndTime: log.localEndTime,
+        interstateStartKm: log.interstateStartKm,
+        interstateEndKm: log.interstateEndKm,
+        deliveriesDone: log.deliveriesDone,
+        ...req.body,
+        ...updates,
+      };
+      const validation = await validateAndBuildWorkLogFields({
+        body: validationBody,
+        driverId: log.driverId,
+        existingLog: log,
+      });
+      if (validation.error) {
+        return res.status(400).json({ success: false, message: validation.error });
+      }
+      Object.assign(updates, validation.fields);
+      delete updates.jobId;
     }
 
     Object.assign(log, updates);
@@ -330,7 +454,7 @@ exports.getAllLogsForAdmin = async (req, res) => {
     // Populate driver details and job details for admin view
     const logs = await DailyWorkLog.find(query)
       .populate("driverId", "name email")  // adjust fields as per your driver model
-      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status")
+      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
       .sort({ workDate: -1, date: -1 });
 
     return res.status(200).json({ success: true, data: logs });
@@ -344,7 +468,7 @@ exports.getPendingLogsForAdmin = async (req, res) => {
   try {
     const logs = await DailyWorkLog.find({ status: "pending" })
       .populate("driverId", "name email")
-      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status")
+      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
       .sort({ workDate: -1, date: -1 });
 
     return res.status(200).json({ success: true, data: logs });

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -48,6 +48,7 @@ const DemoAssistant = () => {
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const shouldLockPageScroll = useMediaQuery("(max-width:767px)");
   const inputRef = useRef(null);
 
   const publicAssistantPaths = ["/", "/login"];
@@ -56,14 +57,26 @@ const DemoAssistant = () => {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([welcomeMessage]);
+  const [showMoreSuggestions, setShowMoreSuggestions] = useState(false);
 
   const visibleSuggestions = useMemo(() => {
-    const suggestionCount = isMobile ? 4 : 6;
+    const suggestionCount = isMobile ? (showMoreSuggestions ? 8 : 4) : 6;
     const offset = Math.floor(messages.length / 2) % suggestedQuestions.length;
     return Array.from({ length: suggestionCount }, (_, index) => (
       suggestedQuestions[(offset + index) % suggestedQuestions.length]
     ));
-  }, [isMobile, messages.length]);
+  }, [isMobile, messages.length, showMoreSuggestions]);
+
+  useEffect(() => {
+    if (!open || !shouldLockPageScroll) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, shouldLockPageScroll]);
 
   if (!shouldShow) return null;
 
@@ -77,6 +90,7 @@ const DemoAssistant = () => {
       { role: "assistant", text: getAssistantAnswer(trimmedQuestion) },
     ]);
     setInput("");
+    if (isMobile) setShowMoreSuggestions(false);
   };
 
   const handleSubmit = (event) => {
@@ -87,6 +101,7 @@ const DemoAssistant = () => {
   const resetConversation = () => {
     setMessages([welcomeMessage]);
     setInput("");
+    setShowMoreSuggestions(false);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
@@ -105,12 +120,13 @@ const DemoAssistant = () => {
           elevation={0}
           sx={{
             pointerEvents: "auto",
-            width: { xs: "calc(100vw - 28px)", sm: 390 },
+            width: { xs: "94vw", sm: 390 },
             maxWidth: 430,
-            height: { xs: "min(680px, calc(100vh - 96px))", sm: 560 },
-            mb: 1.5,
+            height: { xs: "min(78vh, 620px)", sm: 560 },
+            maxHeight: { xs: "78vh", sm: 560 },
+            mb: { xs: 1, sm: 1.5 },
             overflow: "hidden",
-            borderRadius: { xs: 4, sm: 5 },
+            borderRadius: { xs: 3.5, sm: 5 },
             border: "1px solid",
             borderColor: alpha(palette.teal, 0.18),
             bgcolor: palette.panel,
@@ -118,22 +134,26 @@ const DemoAssistant = () => {
             backdropFilter: "blur(18px)",
             display: "flex",
             flexDirection: "column",
+            transform: open ? "translateY(0)" : "translateY(8px)",
+            opacity: open ? 1 : 0,
+            transition: "opacity 180ms ease, transform 180ms ease",
           }}
         >
           <Box
             sx={{
-              p: 2,
+              p: { xs: 1.35, sm: 2 },
               color: "white",
               background: `linear-gradient(135deg, ${palette.heroStart} 0%, ${palette.heroMid} 58%, ${palette.heroEnd} 100%)`,
+              flexShrink: 0,
             }}
           >
             <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="space-between">
               <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
                 <Box
                   sx={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 3,
+                    width: { xs: 34, sm: 40 },
+                    height: { xs: 34, sm: 40 },
+                    borderRadius: { xs: 2.5, sm: 3 },
                     display: "grid",
                     placeItems: "center",
                     bgcolor: alpha("#fff", 0.12),
@@ -145,8 +165,8 @@ const DemoAssistant = () => {
                   <SmartToyOutlinedIcon />
                 </Box>
                 <Box minWidth={0}>
-                  <Typography fontWeight={950} noWrap>XFlyve Demo Assistant</Typography>
-                  <Typography variant="caption" sx={{ color: alpha("#fff", 0.68) }}>
+                  <Typography fontWeight={950} noWrap sx={{ fontSize: { xs: "0.92rem", sm: "1rem" } }}>XFlyve Demo Assistant</Typography>
+                  <Typography variant="caption" sx={{ color: alpha("#fff", 0.68), fontSize: { xs: "0.68rem", sm: "0.75rem" } }}>
                     Local guide, no external AI calls
                   </Typography>
                 </Box>
@@ -166,7 +186,7 @@ const DemoAssistant = () => {
             </Stack>
           </Box>
 
-          <Box sx={{ p: 2, overflowY: "auto", flex: 1 }}>
+          <Box sx={{ p: { xs: 1.25, sm: 2 }, overflowY: "auto", flex: 1, minHeight: 0 }}>
             <Stack spacing={1.25}>
               {messages.map((message, index) => {
                 const isAssistant = message.role === "assistant";
@@ -176,16 +196,16 @@ const DemoAssistant = () => {
                     sx={{
                       alignSelf: isAssistant ? "flex-start" : "flex-end",
                       maxWidth: "92%",
-                      px: 1.5,
-                      py: 1.15,
-                      borderRadius: 3,
+                      px: { xs: 1.2, sm: 1.5 },
+                      py: { xs: 0.9, sm: 1.15 },
+                      borderRadius: { xs: 2.5, sm: 3 },
                       color: isAssistant ? palette.ink : "white",
                       bgcolor: isAssistant ? alpha(palette.teal, 0.08) : palette.teal,
                       border: "1px solid",
                       borderColor: isAssistant ? alpha(palette.teal, 0.14) : alpha(palette.teal, 0.28),
                     }}
                   >
-                    <Typography variant="body2" sx={{ lineHeight: 1.55 }}>
+                    <Typography variant="body2" sx={{ lineHeight: 1.5, fontSize: { xs: "0.82rem", sm: "0.875rem" } }}>
                       {message.text}
                     </Typography>
                   </Box>
@@ -193,7 +213,10 @@ const DemoAssistant = () => {
               })}
             </Stack>
 
-            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 2 }}>
+          </Box>
+
+          <Box sx={{ px: { xs: 1.25, sm: 2 }, pb: { xs: 1, sm: 1.25 }, flexShrink: 0 }}>
+            <Stack direction="row" spacing={0.6} useFlexGap flexWrap="wrap">
               {visibleSuggestions.map((question) => (
                 <Chip
                   key={question}
@@ -207,13 +230,29 @@ const DemoAssistant = () => {
                     border: "1px solid",
                     borderColor: alpha(palette.teal, 0.16),
                     fontWeight: 800,
+                    height: { xs: 28, sm: 32 },
+                    fontSize: { xs: "0.72rem", sm: "0.8125rem" },
                   }}
                 />
               ))}
+              {isMobile && (
+                <Chip
+                  label={showMoreSuggestions ? "Show less" : "Show more"}
+                  clickable
+                  onClick={() => setShowMoreSuggestions((prev) => !prev)}
+                  sx={{
+                    height: 28,
+                    color: palette.ink,
+                    bgcolor: alpha(palette.ink, 0.06),
+                    fontWeight: 850,
+                    fontSize: "0.72rem",
+                  }}
+                />
+              )}
             </Stack>
 
             {messages[messages.length - 1]?.text === fallbackAnswer && (
-              <Typography variant="caption" sx={{ display: "block", mt: 1.25, color: palette.muted }}>
+              <Typography variant="caption" sx={{ display: "block", mt: 1, color: palette.muted, fontSize: { xs: "0.68rem", sm: "0.75rem" } }}>
                 Suggested topics are generated locally from a structured portfolio knowledge file.
               </Typography>
             )}
@@ -222,7 +261,7 @@ const DemoAssistant = () => {
           <Box
             component="form"
             onSubmit={handleSubmit}
-            sx={{ p: 1.5, borderTop: "1px solid", borderColor: palette.line, bgcolor: alpha("#fff", 0.82) }}
+            sx={{ p: { xs: 1.1, sm: 1.5 }, borderTop: "1px solid", borderColor: palette.line, bgcolor: alpha("#fff", 0.82), flexShrink: 0 }}
           >
             <Stack direction="row" spacing={1}>
               <TextField
@@ -235,9 +274,10 @@ const DemoAssistant = () => {
                 inputProps={{ "aria-label": "Ask the XFlyve Demo Assistant a question" }}
                 sx={{
                   "& .MuiOutlinedInput-root": {
-                    minHeight: 44,
-                    borderRadius: 3,
+                    minHeight: { xs: 40, sm: 44 },
+                    borderRadius: { xs: 2.5, sm: 3 },
                     bgcolor: "#fff",
+                    fontSize: { xs: "0.84rem", sm: "0.875rem" },
                   },
                 }}
               />
@@ -248,9 +288,9 @@ const DemoAssistant = () => {
                     disabled={!input.trim()}
                     aria-label="send demo assistant question"
                     sx={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 3,
+                      width: { xs: 40, sm: 44 },
+                      height: { xs: 40, sm: 44 },
+                      borderRadius: { xs: 2.5, sm: 3 },
                       color: "white",
                       bgcolor: palette.teal,
                       "&:hover": { bgcolor: "#0b615d" },
@@ -273,7 +313,7 @@ const DemoAssistant = () => {
           startIcon={<AutoAwesomeOutlinedIcon />}
           sx={{
             pointerEvents: "auto",
-            minHeight: 54,
+            minHeight: { xs: 48, sm: 54 },
             borderRadius: 999,
             px: { xs: 2, sm: 2.25 },
             color: "white",

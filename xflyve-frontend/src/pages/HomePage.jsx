@@ -23,6 +23,7 @@ import {
 } from "../api";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -507,6 +508,12 @@ const HomePage = () => {
       description: "Check delivery proof",
       path: "/pods",
       icon: <UploadFileIcon />,
+    },
+    {
+      label: "Work Diary",
+      description: "Review compliance uploads",
+      path: "/work-diary",
+      icon: <DescriptionOutlinedIcon />,
     },
     {
       label: "Manage Drivers",

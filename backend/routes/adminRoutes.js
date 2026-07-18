@@ -7,6 +7,7 @@ const { requireAdmin } = require("../middlewares/roleMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
 const { driverCreationValidator, driverUpdateValidator } = require("../validators/authValidator");
 const Driver = require("../models/driver");
+const logger = require("../utils/logger");
 
 /* ==========================================================
    🔐 PROTECTED ADMIN ROUTES (Requires Token + Admin Role)
@@ -16,10 +17,6 @@ router.post(
   "/drivers",
   authMiddleware,
   requireAdmin,
-  (req, res, next) => {
-    console.log("Create driver submitted payload:", req.body);
-    next();
-  },
   driverCreationValidator,
   validateRequest,
   adminController.createDriver
@@ -45,11 +42,10 @@ router.get("/show-all-drivers", authMiddleware, requireAdmin, async (req, res) =
       data: drivers,
     });
   } catch (err) {
-    console.error("Error fetching drivers:", err);
+    logger.error("Error fetching drivers: %o", err);
     return res.status(500).json({
       success: false,
       message: "Error fetching drivers",
-      error: err.toString(),
     });
   }
 });

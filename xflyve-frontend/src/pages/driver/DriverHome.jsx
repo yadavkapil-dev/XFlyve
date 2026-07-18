@@ -389,6 +389,7 @@ const DriverHome = () => {
   const statusMeta = getStatusMeta(currentJob?.status);
   const isCompletedWithPod =
     currentJob?.status === "completed" && dashboard.hasPodForCurrentJob;
+  const isInterstateJob = currentJob?.jobType === "interstate";
 
   const handlePrimaryAction = async () => {
     if (!currentJob) {
@@ -700,6 +701,18 @@ const DriverHome = () => {
                         sx={{ minHeight: 52, borderRadius: 3.25, fontWeight: 900 }}
                       >
                         Edit / Replace POD
+                      </Button>
+                    )}
+                    {isInterstateJob && (
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        startIcon={<DescriptionOutlinedIcon />}
+                        onClick={() => navigate(`/driver/work-diary/${currentJob._id}`)}
+                        fullWidth
+                        sx={{ minHeight: 52, borderRadius: 3.25, fontWeight: 900 }}
+                      >
+                        Work Diary Pages
                       </Button>
                     )}
                   </Stack>

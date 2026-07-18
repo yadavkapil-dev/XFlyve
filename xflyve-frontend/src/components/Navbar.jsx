@@ -50,6 +50,7 @@ const getNavigationItems = (role) => {
       { label: "Jobs", path: "/jobs", icon: <WorkRoundedIcon fontSize="small" /> },
       { label: "Logs", path: "/logs", icon: <FactCheckRoundedIcon fontSize="small" /> },
       { label: "PODs", path: "/pods", icon: <UploadFileRoundedIcon fontSize="small" /> },
+      { label: "Work Diary", path: "/work-diary", icon: <MenuBookRoundedIcon fontSize="small" /> },
       { label: "Drivers", path: "/drivers", icon: <PeopleAltRoundedIcon fontSize="small" /> },
       { label: "Trucks", path: "/trucks", icon: <LocalShippingRoundedIcon fontSize="small" /> },
     ];

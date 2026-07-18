@@ -14,6 +14,26 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// On 401 (expired/invalid token, or account deactivated/archived), clear auth
+// state and redirect to login. Skip auth endpoints to avoid redirect loops.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const isAuthEndpoint = error.config?.url?.includes("/auth/");
+
+    if (status === 401 && !isAuthEndpoint) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 // ===== AUTH ROUTES =====
 export const login = (credentials) => api.post("/auth/login", credentials);
 export const signup = (userData) => api.post("/auth/signup", userData);

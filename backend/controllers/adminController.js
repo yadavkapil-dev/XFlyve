@@ -1,6 +1,3 @@
-const path = require("path");
-const fs = require("fs");
-
 const Driver = require("../models/driver");
 const Job = require("../models/job");
 const Truck = require("../models/truck");
@@ -122,27 +119,38 @@ exports.getSystemStats = async (req, res) => {
 // GET /api/admin/download-all-pods
 exports.downloadAllPods = async (req, res) => {
   try {
-    const pods = await JobPod.find().select("filePath");
+    const pods = await JobPod.find({ fileUrl: { $exists: true, $ne: null } })
+      .select("fileUrl driverId uploadDate createdAt")
+      .populate("driverId", "name")
+      .lean();
 
-    const fullPaths = pods
-      .map((pod) => path.join(__dirname, "..", pod.filePath))
-      .filter((filePath) => {
-        if (!fs.existsSync(filePath)) {
-          logger.warn(`Missing POD file skipped in ZIP: ${filePath}`);
-          return false;
-        }
-        return true;
-      });
-
-    if (fullPaths.length === 0) {
+    if (pods.length === 0) {
       return res.status(404).json({ status: "fail", message: "No POD files found" });
     }
 
-    logger.info(`Zipping ${fullPaths.length} POD files`);
-    generateZip(fullPaths, "all_pods.zip", res);
+    const usedNames = new Set();
+    const files = pods.map((pod) => {
+      const driverName = (pod.driverId?.name || "driver").trim().replace(/[^a-z0-9]+/gi, "_");
+      const dateStr = new Date(pod.uploadDate || pod.createdAt || 0).toISOString().slice(0, 10);
+      const baseName = `POD-${driverName}-${dateStr}`;
+
+      let name = `${baseName}.pdf`;
+      let suffix = 1;
+      while (usedNames.has(name)) {
+        name = `${baseName}-${suffix++}.pdf`;
+      }
+      usedNames.add(name);
+
+      return { url: pod.fileUrl, name };
+    });
+
+    logger.info(`Zipping ${files.length} POD files`);
+    await generateZip(files, "all_pods.zip", res);
   } catch (err) {
     logger.error("Failed to download all PODs: %o", err);
-    res.status(500).json({ status: "error", message: "Server error generating PODs ZIP" });
+    if (!res.headersSent) {
+      res.status(500).json({ status: "error", message: "Server error generating PODs ZIP" });
+    }
   }
 };
 

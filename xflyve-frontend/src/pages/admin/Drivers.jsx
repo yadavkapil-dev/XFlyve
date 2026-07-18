@@ -98,7 +98,6 @@ const Drivers = () => {
         email: formData.email,
         password: formData.password,
       };
-      console.log("Create driver submitted payload:", payload);
       await createDriver(payload);
       setSuccess("Driver created successfully.");
       setFormData(emptyDriver);

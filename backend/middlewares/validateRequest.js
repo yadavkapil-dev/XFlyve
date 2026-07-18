@@ -12,10 +12,6 @@ const validateRequest = (req, res, next) => {
       message: err.msg,
     }));
 
-    if (req.method === "POST" && req.originalUrl === "/api/admin/drivers") {
-      console.log("Create driver validation errors:", validationErrors);
-    }
-
     const statusCode =
       req.method === "PUT" && /^\/api\/admin\/drivers\/[^/]+$/.test(req.originalUrl)
         ? 400

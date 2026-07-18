@@ -1,6 +1,7 @@
 const WorkDiary = require("../models/workDiary");
 const Job = require("../models/job");
 const mongoose = require("mongoose");
+const { Readable } = require("stream");
 const logger = require("../utils/logger");
 const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
@@ -138,7 +139,14 @@ exports.getWorkDiary = async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    return res.status(200).json({ success: true, data: workDiary });
+    const fileResponse = await fetch(workDiary.fileUrl);
+    if (!fileResponse.ok || !fileResponse.body) {
+      return res.status(502).json({ success: false, message: "Failed to retrieve work diary file" });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="WorkDiary-${id}.pdf"`);
+    Readable.fromWeb(fileResponse.body).pipe(res);
   } catch (err) {
     logger.error("Get work diary error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });

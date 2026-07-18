@@ -1,6 +1,7 @@
 const JobPod = require("../models/jobPod");
 const Job = require("../models/job");
 const mongoose = require("mongoose");
+const { Readable } = require("stream");
 const logger = require("../utils/logger");
 const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
@@ -115,7 +116,14 @@ exports.getPOD = async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    return res.status(200).json({ success: true, data: { url: pod.fileUrl } });
+    const fileResponse = await fetch(pod.fileUrl);
+    if (!fileResponse.ok || !fileResponse.body) {
+      return res.status(502).json({ success: false, message: "Failed to retrieve POD file" });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="POD-${podId}.pdf"`);
+    Readable.fromWeb(fileResponse.body).pipe(res);
   } catch (err) {
     logger.error("Get POD error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });

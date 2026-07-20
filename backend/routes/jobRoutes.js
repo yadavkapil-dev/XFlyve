@@ -60,6 +60,22 @@ router.get(
 // Driver-only: Get jobs assigned to logged-in driver
 router.get("/driver", requireDriver, jobController.getMyJobs);
 
+// Get a single job by ID — allow admin or the assigned driver (ownership
+// enforced in the controller), same gate as PUT /:jobId above. Must stay
+// after the literal /driver route above so "/jobs/driver" doesn't get
+// swallowed by this :jobId wildcard.
+router.get(
+  "/:jobId",
+  (req, res, next) => {
+    if (req.user.role === "admin" || req.user.role === "driver") {
+      return next();
+    }
+    return res.status(403).json({ status: "fail", message: "Forbidden" });
+  },
+  validateMongoId("jobId"),
+  jobController.getJobById
+);
+
 // Driver route: mark job complete
 router.put("/complete/:jobId", requireDriver, validateMongoId("jobId"), jobController.markJobComplete);
 

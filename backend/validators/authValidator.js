@@ -57,4 +57,18 @@ exports.driverUpdateValidator = [
     .trim()
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters"),
+  body("driverType")
+    .optional()
+    .trim()
+    .isIn(["local", "interstate"])
+    .withMessage("driverType must be 'local' or 'interstate'"),
+  body("phone").optional().trim().isString().withMessage("Phone must be a string"),
+  body("payType")
+    .optional()
+    .isIn(["hourly", "per_km", "per_delivery", "salary", "contractor"])
+    .withMessage("Invalid payType"),
+  body("hourlyRate").optional().isFloat({ min: 0 }).withMessage("Hourly rate must be non-negative"),
+  body("kmRate").optional().isFloat({ min: 0 }).withMessage("KM rate must be non-negative"),
+  body("deliveryRate").optional().isFloat({ min: 0 }).withMessage("Delivery rate must be non-negative"),
+  body("abn").optional().trim().isString().withMessage("ABN must be a string"),
 ];

@@ -255,7 +255,18 @@ exports.createDriver = async (req, res) => {
 exports.updateDriver = async (req, res) => {
   try {
     const { driverId } = req.params;
-    const { name, email, password } = req.body;
+    const {
+      name,
+      email,
+      password,
+      driverType,
+      phone,
+      payType,
+      hourlyRate,
+      kmRate,
+      deliveryRate,
+      abn,
+    } = req.body;
 
     const driver = await Driver.findById(driverId);
     if (!driver) {
@@ -277,6 +288,13 @@ exports.updateDriver = async (req, res) => {
     if (password && password.trim()) {
       driver.password = password.trim();
     }
+    if (driverType !== undefined) driver.driverType = driverType;
+    if (phone !== undefined) driver.phone = phone;
+    if (payType !== undefined) driver.payType = payType;
+    if (hourlyRate !== undefined) driver.hourlyRate = hourlyRate;
+    if (kmRate !== undefined) driver.kmRate = kmRate;
+    if (deliveryRate !== undefined) driver.deliveryRate = deliveryRate;
+    if (abn !== undefined) driver.abn = abn;
 
     await driver.save();
 

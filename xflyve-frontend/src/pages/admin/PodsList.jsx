@@ -19,7 +19,7 @@ import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DownloadIcon from "@mui/icons-material/Download";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import { getAllDrivers, listPodsByDriver, deletePod, getPod, listPendingPods, approvePod, rejectPod } from "../../api";
+import { getAllDrivers, listPodsByDriver, deletePod, getPod, listPendingPods, approvePod, rejectPod, downloadAllPods } from "../../api";
 
 const palette = {
   ink: "#0b1220",
@@ -42,6 +42,7 @@ const AdminPODs = () => {
   const [actionId, setActionId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [downloadingAll, setDownloadingAll] = useState(false);
 
   const fetchPendingPods = async () => {
     setPendingLoading(true);
@@ -163,13 +164,47 @@ const AdminPODs = () => {
     }
   };
 
+  const handleDownloadAll = async () => {
+    setError("");
+    setSuccess("");
+    setDownloadingAll(true);
+    try {
+      const res = await downloadAllPods();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(res.data);
+      link.download = "all_pods.zip";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      setError(err.response?.status === 404 ? "No POD files found to download" : "Failed to download all PODs");
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
+
   return (
     <Box sx={{ minHeight: "100vh", pt: { xs: 3, sm: 4 }, pb: 6, overflowX: "hidden", background: `radial-gradient(circle at 0% 0%, ${alpha(palette.teal, 0.13)}, transparent 32%), linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)` }}>
       <Box sx={{ width: "100%", maxWidth: 1040, mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
         <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 5, color: "white", background: `linear-gradient(135deg, ${palette.heroStart} 0%, ${palette.heroMid} 58%, ${palette.heroEnd} 100%)` }}>
-          <Chip label="Delivery Records" size="small" sx={{ mb: 1.5, color: "white", bgcolor: alpha("#fff", 0.12), fontWeight: 850 }} />
-          <Typography variant="h4" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>POD Records</Typography>
-          <Typography sx={{ mt: 1, color: alpha("#fff", 0.74), lineHeight: 1.6 }}>Review proof-of-delivery uploads by driver for customer follow-up and invoice preparation.</Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
+            <Box>
+              <Chip label="Delivery Records" size="small" sx={{ mb: 1.5, color: "white", bgcolor: alpha("#fff", 0.12), fontWeight: 850 }} />
+              <Typography variant="h4" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>POD Records</Typography>
+              <Typography sx={{ mt: 1, color: alpha("#fff", 0.74), lineHeight: 1.6 }}>Review proof-of-delivery uploads by driver for customer follow-up and invoice preparation.</Typography>
+            </Box>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadAll}
+              disabled={downloadingAll}
+              sx={{ minHeight: 54, borderRadius: 3, bgcolor: "white", color: palette.ink, fontWeight: 950, px: 2.5, alignSelf: { xs: "stretch", sm: "flex-start" }, "&:hover": { bgcolor: alpha("#fff", 0.9) } }}
+            >
+              {downloadingAll ? "Preparing ZIP..." : "Download All"}
+            </Button>
+          </Stack>
         </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}

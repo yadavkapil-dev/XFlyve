@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -32,8 +33,46 @@ const palette = {
   teal: "#0e7c76",
 };
 
-const emptyDriver = { name: "", email: "", password: "" };
-const emptyEditDriver = { id: "", name: "", email: "", password: "" };
+// driverType/payType enums match backend/models/driver.js exactly.
+const DRIVER_TYPES = [
+  { value: "local", label: "Local" },
+  { value: "interstate", label: "Interstate" },
+];
+const PAY_TYPES = [
+  { value: "hourly", label: "Hourly" },
+  { value: "per_km", label: "Per KM" },
+  { value: "per_delivery", label: "Per Delivery" },
+  { value: "salary", label: "Salary" },
+  { value: "contractor", label: "Contractor" },
+];
+
+const emptyProfileFields = {
+  driverType: "",
+  phone: "",
+  payType: "",
+  hourlyRate: "",
+  kmRate: "",
+  deliveryRate: "",
+  abn: "",
+};
+
+const emptyDriver = { name: "", email: "", password: "", ...emptyProfileFields };
+const emptyEditDriver = { id: "", name: "", email: "", password: "", ...emptyProfileFields };
+
+// Builds the optional profile fields for create/update payloads — only
+// includes a field if the admin actually set it, and converts rate fields
+// to numbers (they're plain text inputs in state).
+const buildProfilePayload = (fields) => {
+  const payload = {};
+  if (fields.driverType) payload.driverType = fields.driverType;
+  if (fields.phone.trim()) payload.phone = fields.phone.trim();
+  if (fields.payType) payload.payType = fields.payType;
+  if (fields.hourlyRate !== "") payload.hourlyRate = Number(fields.hourlyRate);
+  if (fields.kmRate !== "") payload.kmRate = Number(fields.kmRate);
+  if (fields.deliveryRate !== "") payload.deliveryRate = Number(fields.deliveryRate);
+  if (fields.abn.trim()) payload.abn = fields.abn.trim();
+  return payload;
+};
 
 const getBackendErrorMessage = (err, fallback) => {
   const data = err.response?.data;
@@ -43,6 +82,28 @@ const getBackendErrorMessage = (err, fallback) => {
   }
   return err.message || fallback;
 };
+
+// Shared by the create form and edit dialog — same optional profile fields
+// in both places.
+const DriverProfileFields = ({ fields, onFieldChange }) => (
+  <>
+    <TextField select label="Driver Type" value={fields.driverType} onChange={(e) => onFieldChange("driverType", e.target.value)} fullWidth>
+      <MenuItem value=""><em>Not set</em></MenuItem>
+      {DRIVER_TYPES.map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+    </TextField>
+    <TextField label="Phone" value={fields.phone} onChange={(e) => onFieldChange("phone", e.target.value)} fullWidth />
+    <TextField select label="Pay Type" value={fields.payType} onChange={(e) => onFieldChange("payType", e.target.value)} fullWidth>
+      <MenuItem value=""><em>Not set</em></MenuItem>
+      {PAY_TYPES.map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+    </TextField>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
+      <TextField label="Hourly Rate" type="number" value={fields.hourlyRate} onChange={(e) => onFieldChange("hourlyRate", e.target.value)} inputProps={{ min: 0, step: "0.01" }} fullWidth />
+      <TextField label="KM Rate" type="number" value={fields.kmRate} onChange={(e) => onFieldChange("kmRate", e.target.value)} inputProps={{ min: 0, step: "0.01" }} fullWidth />
+      <TextField label="Delivery Rate" type="number" value={fields.deliveryRate} onChange={(e) => onFieldChange("deliveryRate", e.target.value)} inputProps={{ min: 0, step: "0.01" }} fullWidth />
+    </Box>
+    <TextField label="ABN" value={fields.abn} onChange={(e) => onFieldChange("abn", e.target.value)} fullWidth />
+  </>
+);
 
 const Drivers = () => {
   const [drivers, setDrivers] = useState([]);
@@ -97,6 +158,7 @@ const Drivers = () => {
         name: formData.name,
         email: formData.email,
         password: formData.password,
+        ...buildProfilePayload(formData),
       };
       await createDriver(payload);
       setSuccess("Driver created successfully.");
@@ -127,6 +189,13 @@ const Drivers = () => {
       name: driver.name || "",
       email: driver.email || "",
       password: "",
+      driverType: driver.driverType || "",
+      phone: driver.phone || "",
+      payType: driver.payType || "",
+      hourlyRate: driver.hourlyRate ?? "",
+      kmRate: driver.kmRate ?? "",
+      deliveryRate: driver.deliveryRate ?? "",
+      abn: driver.abn || "",
     });
     setEditOpen(true);
     setError("");
@@ -146,6 +215,7 @@ const Drivers = () => {
       const payload = {
         name: editDriver.name,
         email: editDriver.email,
+        ...buildProfilePayload(editDriver),
       };
       if (editDriver.password.trim()) {
         payload.password = editDriver.password;
@@ -187,6 +257,7 @@ const Drivers = () => {
               <TextField label="Name" name="name" value={formData.name} onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))} required fullWidth />
               <TextField label="Email" name="email" type="email" value={formData.email} onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))} required fullWidth />
               <TextField label="Temporary Password" name="password" type="password" value={formData.password} onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))} required fullWidth />
+              <DriverProfileFields fields={formData} onFieldChange={(key, value) => setFormData((p) => ({ ...p, [key]: value }))} />
               <Button type="submit" variant="contained" size="large" fullWidth sx={{ minHeight: 56, borderRadius: 3, bgcolor: palette.ink, fontWeight: 950 }}>
                 Create Driver
               </Button>
@@ -266,6 +337,7 @@ const Drivers = () => {
                 onChange={(e) => setEditDriver((p) => ({ ...p, password: e.target.value }))}
                 fullWidth
               />
+              <DriverProfileFields fields={editDriver} onFieldChange={(key, value) => setEditDriver((p) => ({ ...p, [key]: value }))} />
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>

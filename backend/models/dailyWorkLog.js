@@ -96,6 +96,9 @@ const dailyWorkLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Driver's own work log history (getLogsByDriver/getMyLogs, admin per-driver filter): DailyWorkLog.find({ driverId })
+dailyWorkLogSchema.index({ driverId: 1 });
+
 dailyWorkLogSchema.pre("validate", function (next) {
   if (!this.workDate && this.date) {
     this.workDate = this.date;

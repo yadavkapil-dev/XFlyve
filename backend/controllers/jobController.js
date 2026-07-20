@@ -2,6 +2,13 @@ const Job = require("../models/job");
 const Driver = require("../models/driver");
 const Truck = require("../models/truck");
 const logger = require("../utils/logger");
+const {
+  JobTransitionError,
+  isTruckUnavailable,
+  startJob,
+  completeJob,
+  reassignJob,
+} = require("../services/jobTransitionService");
 
 const DRIVER_STATUS_TRANSITIONS = {
   pending: "in-progress",
@@ -60,31 +67,6 @@ const findTruckJobConflict = async ({ assignedTruck, jobDate, excludeJobId }) =>
     ...(excludeJobId ? { _id: { $ne: excludeJobId } } : {}),
     jobDate: { $gte: range.start, $lt: range.end },
   }).lean();
-};
-
-const findInProgressTruckJob = async ({ assignedTruck, excludeJobId }) => {
-  return Job.findOne({
-    assignedTruck,
-    status: "in-progress",
-    recordStatus: { $ne: "archived" },
-    ...(excludeJobId ? { _id: { $ne: excludeJobId } } : {}),
-  }).lean();
-};
-
-const isTruckUnavailable = (truck) =>
-  !truck || truck.recordStatus === "archived" || truck.status !== "available";
-
-const setTruckOnRoute = async (truck, jobId) => {
-  truck.status = "on-route";
-  truck.assignedJob = jobId;
-  await truck.save();
-};
-
-const setTruckAvailable = async (truckId) => {
-  await Truck.updateOne(
-    { _id: truckId, recordStatus: { $ne: "archived" } },
-    { status: "available", assignedJob: null }
-  );
 };
 
 // @desc    Create a new job
@@ -251,20 +233,7 @@ exports.markJobComplete = async (req, res) => {
       return res.status(403).json({ status: "fail", message: "Unauthorized" });
     }
 
-    if (job.status !== "in-progress") {
-      return res.status(409).json({
-        status: "fail",
-        message: "Only an in-progress job can be completed",
-      });
-    }
-
-    job.status = "completed";
-    await job.save();
-    await setTruckAvailable(job.assignedTruck);
-
-    const updatedJob = await Job.findById(job._id)
-      .populate("assignedTruck", "truckNumber")
-      .lean();
+    const updatedJob = await completeJob(job);
 
     res.status(200).json({
       status: "success",
@@ -272,6 +241,9 @@ exports.markJobComplete = async (req, res) => {
       data: updatedJob,
     });
   } catch (err) {
+    if (err instanceof JobTransitionError) {
+      return res.status(err.statusCode).json({ status: "fail", message: err.message });
+    }
     logger.error("Mark Job Complete Error: %o", err);
     res.status(500).json({ status: "error", message: "Server error" });
   }
@@ -353,46 +325,25 @@ exports.updateJob = async (req, res) => {
         });
       }
 
-      if (status === "in-progress") {
-        const truck = await Truck.findById(job.assignedTruck);
-        if (isTruckUnavailable(truck)) {
-          return res.status(409).json({
-            status: "fail",
-            message: "Truck is out of service and cannot start a job",
-          });
+      try {
+        if (status === "in-progress") {
+          await startJob(job);
+
+          const updatedJob = await Job.findById(jobId)
+            .populate("assignedTruck", "truckNumber")
+            .lean();
+
+          return res.status(200).json({ status: "success", data: updatedJob });
         }
 
-        const activeTruckJob = await findInProgressTruckJob({
-          assignedTruck: job.assignedTruck,
-          excludeJobId: jobId,
-        });
-        if (activeTruckJob) {
-          return res.status(409).json({
-            status: "fail",
-            message: "This truck is already on an in-progress job",
-          });
-        }
-
-        job.status = status;
-        await job.save();
-        await setTruckOnRoute(truck, job._id);
-
-        const updatedJob = await Job.findById(jobId)
-          .populate("assignedTruck", "truckNumber")
-          .lean();
-
+        const updatedJob = await completeJob(job);
         return res.status(200).json({ status: "success", data: updatedJob });
+      } catch (err) {
+        if (err instanceof JobTransitionError) {
+          return res.status(err.statusCode).json({ status: "fail", message: err.message });
+        }
+        throw err;
       }
-
-      job.status = status;
-      await job.save();
-      await setTruckAvailable(job.assignedTruck);
-
-      const updatedJob = await Job.findById(jobId)
-        .populate("assignedTruck", "truckNumber")
-        .lean();
-
-      return res.status(200).json({ status: "success", data: updatedJob });
     }
 
     // Admin can update all fields; validate assignedTo if provided
@@ -443,6 +394,25 @@ exports.updateJob = async (req, res) => {
       }
     }
 
+    // An in-progress job's truck is actively "on-route" — swapping it needs
+    // the old truck released and the new one claimed together, not just the
+    // job field updated, or the old truck would be stuck on-route forever.
+    const isReassigningActiveTruck =
+      assignedTruck !== undefined &&
+      job.status === "in-progress" &&
+      assignedTruck.toString() !== job.assignedTruck.toString();
+
+    if (isReassigningActiveTruck) {
+      try {
+        await reassignJob(job, assignedTruck);
+      } catch (err) {
+        if (err instanceof JobTransitionError) {
+          return res.status(err.statusCode).json({ status: "fail", message: err.message });
+        }
+        throw err;
+      }
+    }
+
     job.title = title !== undefined ? title : job.title;
     job.description = description !== undefined ? description : job.description;
     job.pickupLocation = pickupLocation !== undefined ? pickupLocation : job.pickupLocation;
@@ -453,7 +423,9 @@ exports.updateJob = async (req, res) => {
     job.invoiceStatus = invoiceStatus !== undefined ? invoiceStatus : job.invoiceStatus;
     job.recordStatus = recordStatus !== undefined ? recordStatus : job.recordStatus;
     job.assignedTo = assignedTo !== undefined ? assignedTo : job.assignedTo;
-    job.assignedTruck = nextAssignedTruck;
+    // If the truck was already reassigned atomically above, don't overwrite
+    // it again here with a stale in-memory value.
+    job.assignedTruck = isReassigningActiveTruck ? job.assignedTruck : nextAssignedTruck;
     job.jobDate = nextJobDate;
     job.jobType = jobType !== undefined ? jobType : job.jobType;
     job.status = status !== undefined ? status : job.status;

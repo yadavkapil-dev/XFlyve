@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const TruckAssignment = require("../models/dailyTruckAssignment");
 const Truck = require("../models/truck");
 const logger = require("../utils/logger");
+const { isTruckUnavailable } = require("../services/jobTransitionService");
 
 const normalizeDateOnly = (value) => {
   if (!value) return null;
@@ -41,9 +42,6 @@ const findAssignmentConflict = async ({ driverId, truckId, date, excludeId }) =>
   if (truckConflict) return { type: "truck", assignment: truckConflict };
   return null;
 };
-
-const isTruckUnavailable = (truck) =>
-  !truck || truck.recordStatus === "archived" || truck.status !== "available";
 
 /**
  * @desc Assign a truck to a driver on a specific date
@@ -94,6 +92,16 @@ exports.assignTruck = async (req, res) => {
       data: assignment,
     });
   } catch (err) {
+    // A concurrent request can win the pre-check race above; the schema's
+    // unique indexes on {driverId,date}/{truckId,date} still guarantee no
+    // double-booking, so surface that as a normal conflict, not a 500.
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "This driver or truck already has a conflicting assignment on the selected date",
+      });
+    }
+
     logger.error("Assign truck error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }
@@ -233,6 +241,13 @@ exports.updateAssignment = async (req, res) => {
       data: updated,
     });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "This driver or truck already has a conflicting assignment on the selected date",
+      });
+    }
+
     logger.error("Update assignment error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }

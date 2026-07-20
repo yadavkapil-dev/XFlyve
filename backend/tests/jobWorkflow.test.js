@@ -73,6 +73,7 @@ const loadJobController = () => {
   };
   const Truck = {
     findById: jest.fn(),
+    findOneAndUpdate: jest.fn(),
     updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
   };
 
@@ -252,6 +253,7 @@ describe("Job workflow controller", () => {
       const truckId = new mongoose.Types.ObjectId().toString();
       const jobDoc = makeJobDoc({ assignedTo: driverId, assignedTruck: truckId, status: "pending" });
       const truckDoc = makeTruckDoc();
+      const claimedTruck = { ...truckDoc, status: "on-route", assignedJob: jobDoc._id };
       const updatedJob = { _id: jobDoc._id.toString(), status: "in-progress" };
 
       Job.findById
@@ -259,6 +261,7 @@ describe("Job workflow controller", () => {
         .mockReturnValueOnce(populatedFindById(updatedJob));
       Truck.findById.mockResolvedValueOnce(truckDoc);
       Job.findOne.mockReturnValueOnce(leanResult(null));
+      Truck.findOneAndUpdate.mockResolvedValueOnce(claimedTruck);
 
       const req = {
         params: { jobId: new mongoose.Types.ObjectId().toString() },
@@ -272,9 +275,44 @@ describe("Job workflow controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(jobDoc.status).toBe("in-progress");
       expect(jobDoc.save).toHaveBeenCalledTimes(1);
-      expect(truckDoc.status).toBe("on-route");
-      expect(truckDoc.assignedJob).toBe(jobDoc._id);
-      expect(truckDoc.save).toHaveBeenCalledTimes(1);
+      // The truck claim is an atomic conditional update (only succeeds while
+      // still "available"), not a read-then-save — that's what actually
+      // prevents two concurrent start requests from both winning the truck.
+      expect(Truck.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: truckDoc._id, status: "available", recordStatus: { $ne: "archived" } },
+        { status: "on-route", assignedJob: jobDoc._id },
+        { new: true }
+      );
+    });
+
+    test("rejects starting a job when a concurrent request already claimed the truck", async () => {
+      const { controller, Job, Truck } = loadJobController();
+      const driverId = new mongoose.Types.ObjectId().toString();
+      const truckId = new mongoose.Types.ObjectId().toString();
+      const jobDoc = makeJobDoc({ assignedTo: driverId, assignedTruck: truckId, status: "pending" });
+      const truckDoc = makeTruckDoc();
+
+      Job.findById.mockResolvedValueOnce(jobDoc);
+      Truck.findById.mockResolvedValueOnce(truckDoc);
+      Job.findOne.mockReturnValueOnce(leanResult(null));
+      // Another request won the race and flipped the truck first.
+      Truck.findOneAndUpdate.mockResolvedValueOnce(null);
+
+      const req = {
+        params: { jobId: new mongoose.Types.ObjectId().toString() },
+        user: { id: driverId, role: "driver" },
+        body: { status: "in-progress" },
+      };
+      const res = makeResponse();
+
+      await controller.updateJob(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(jobDoc.save).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({
+        status: "fail",
+        message: "This truck is already on an in-progress job",
+      });
     });
 
     test("allows in-progress to move to completed and marks the truck available", async () => {

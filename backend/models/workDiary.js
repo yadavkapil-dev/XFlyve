@@ -68,4 +68,7 @@ const workDiarySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Driver work diary history (listWorkDiariesByDriver, hit on every driver/admin work diary view): WorkDiary.find({ driverId })
+workDiarySchema.index({ driverId: 1 });
+
 module.exports = mongoose.model("WorkDiary", workDiarySchema);

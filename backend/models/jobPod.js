@@ -59,4 +59,7 @@ const jobPodSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Driver POD history (listPodsByDriver, hit on every driver/admin POD view): JobPod.find({ driverId })
+jobPodSchema.index({ driverId: 1 });
+
 module.exports = mongoose.model("JobPod", jobPodSchema);

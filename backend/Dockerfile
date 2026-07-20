@@ -34,5 +34,9 @@ USER appuser
 # Expose backend port
 EXPOSE 3001
 
+# Reports container health via the app's own /healthz endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/healthz || exit 1
+
 # Start the server
 CMD ["node", "server.js"]

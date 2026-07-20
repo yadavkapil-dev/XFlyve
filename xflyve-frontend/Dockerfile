@@ -27,5 +27,9 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Expose port
 EXPOSE 80
 
+# Reports container health by confirming Nginx is serving the app.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+
 # Start Nginx
 CMD ["nginx", "-g", "daemon off;"]

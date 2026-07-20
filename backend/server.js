@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+const mongoose = require("mongoose");
 const cors = require("cors");
 const morgan = require("morgan");
 const helmet = require("helmet");
@@ -7,7 +8,13 @@ const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 const logger = require("./utils/logger");
 const connectDB = require("./config/db");
+const validateEnv = require("./config/validateEnv");
+const { Sentry, isSentryEnabled } = require("./config/sentry");
+const requestId = require("./middlewares/requestId");
 const errorHandler = require("./middlewares/errorHandler");
+
+// Fail fast with a clear, safe (non-secret) message if required config is missing.
+validateEnv(logger);
 
 // Routes
 const authRoutes = require("./routes/authRoutes");
@@ -21,6 +28,10 @@ const workDiaryRoutes = require("./routes/workDiaryRoutes");
 
 const app = express();
 app.disable("x-powered-by");
+
+// Correlation ID: accept an inbound X-Request-Id or generate one, expose it
+// on the response header, and make it available to logger/error handling.
+app.use(requestId);
 
 // Rate limiter
 const limiter = rateLimit({
@@ -36,11 +47,6 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
-
-// Validate essential ENV
-if (!process.env.JWT_SECRET || !process.env.MONGO_URI) {
-  throw new Error("Missing essential environment variables (JWT_SECRET, MONGO_URI)");
-}
 
 // CORS
 const allowedOrigins = (process.env.CORS_WHITELIST || process.env.FRONTEND_URL || "")
@@ -82,6 +88,18 @@ app.get("/test", (req, res) => {
   res.send("Xflyve Backend Working");
 });
 
+// Production health check: reports app availability and MongoDB
+// connectivity only. No secrets or internal detail beyond that.
+app.get("/healthz", (req, res) => {
+  const dbConnected = mongoose.connection.readyState === 1;
+
+  res.status(dbConnected ? 200 : 503).json({
+    status: dbConnected ? "ok" : "degraded",
+    uptime: process.uptime(),
+    database: dbConnected ? "connected" : "disconnected",
+  });
+});
+
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/jobs", jobRoutes);
@@ -104,11 +122,15 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// Central error handler
-app.use((err, req, res, next) => {
-  logger.error("Error: %o", err);
-  errorHandler(err, req, res, next);
-});
+// Reports uncaught errors to Sentry (no-op when SENTRY_DSN isn't set) before
+// they reach the central error handler below.
+if (isSentryEnabled) {
+  Sentry.setupExpressErrorHandler(app);
+}
+
+// Central error handler (logs via the shared logger, which also forwards
+// error-level entries to Sentry when configured).
+app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 3001;

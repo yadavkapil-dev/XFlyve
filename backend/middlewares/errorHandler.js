@@ -17,6 +17,7 @@ const errorHandler = (err, req, res, next) => {
     success: false,
     message: err.message || "Internal Server Error",
     statusCode,
+    requestId: req.id,
   };
 
   // Include stack or raw error details only in development

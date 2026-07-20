@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log*
+
+# Secrets — never send env files into the build context
+.env
+.env.*
+!.env.example
+
+# Local-only artifacts
+dist
+coverage
+.DS_Store
+.git
+.gitignore

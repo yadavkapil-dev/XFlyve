@@ -171,6 +171,7 @@ const Jobs = () => {
       description: job.description,
       pickupLocation: job.pickupLocation,
       deliveryLocation: job.deliveryLocation,
+      customerName: job.customerName || "",
       truckId: job.assignedTruck?._id || "",
       assignedTo: job.assignedTo?._id || "",
       jobType: job.jobType,
@@ -226,6 +227,7 @@ const Jobs = () => {
         description: editJob.description,
         pickupLocation: editJob.pickupLocation,
         deliveryLocation: editJob.deliveryLocation,
+        customerName: editJob.customerName,
         assignedTruck: editJob.truckId,
         assignedTo: editJob.assignedTo,
         jobType: editJob.jobType,
@@ -357,6 +359,7 @@ const Jobs = () => {
               <TextField fullWidth label="Description" name="description" value={editJob?.description || ""} onChange={handleEditChange} multiline rows={3} required />
               <TextField fullWidth label="Pickup" name="pickupLocation" value={editJob?.pickupLocation || ""} onChange={handleEditChange} required />
               <TextField fullWidth label="Delivery" name="deliveryLocation" value={editJob?.deliveryLocation || ""} onChange={handleEditChange} required />
+              <TextField fullWidth label="Customer Name" name="customerName" value={editJob?.customerName || ""} onChange={handleEditChange} />
               <TextField select fullWidth label="Truck" name="truckId" value={editJob?.truckId || ""} onChange={handleTruckChange} required>
                 {selectedEditTruck && !isSelectableTruck(selectedEditTruck) && (
                   <MenuItem value={selectedEditTruck._id} disabled>{selectedEditTruck.truckNumber} · unavailable</MenuItem>

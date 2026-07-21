@@ -46,6 +46,7 @@ const emptyForm = {
   jobDate: "",
   pickupLocation: "",
   deliveryLocation: "",
+  customerName: "",
   jobType: "",
 };
 
@@ -269,6 +270,7 @@ const CreateJob = () => {
                     <TextField fullWidth label="Pickup Location" name="pickupLocation" value={formData.pickupLocation} onChange={handleChange} required />
                     <TextField fullWidth label="Delivery Location" name="deliveryLocation" value={formData.deliveryLocation} onChange={handleChange} required />
                   </Box>
+                  <TextField fullWidth label="Customer Name" name="customerName" value={formData.customerName} onChange={handleChange} />
                 </Stack>
               </SectionCard>
 
@@ -321,6 +323,7 @@ const CreateJob = () => {
               <Stack spacing={1.25}>
                 {[
                   ["Route", formData.pickupLocation && formData.deliveryLocation ? `${formData.pickupLocation} → ${formData.deliveryLocation}` : "Not set"],
+                  ["Customer", formData.customerName || "Not set"],
                   ["Driver", selectedDriver?.name || "Not assigned"],
                   ["Truck", selectedTruck?.truckNumber || "Not assigned"],
                   ["Date", formData.jobDate || "Not scheduled"],

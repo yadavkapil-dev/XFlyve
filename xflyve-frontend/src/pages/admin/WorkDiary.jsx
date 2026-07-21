@@ -238,7 +238,7 @@ const WorkDiary = () => {
               <Chip label={`${pendingPagination?.total ?? pendingDiaries.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
             </Stack>
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
-              <TextField select fullWidth size="small" label="Driver" value={pendingFilterDriver} onChange={(e) => setPendingFilterDriver(e.target.value)}>
+              <TextField select fullWidth size="small" label="Filter by driver" value={pendingFilterDriver} onChange={(e) => setPendingFilterDriver(e.target.value)}>
                 <MenuItem value="">All Drivers</MenuItem>
                 {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
               </TextField>

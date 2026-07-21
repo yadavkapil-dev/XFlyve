@@ -385,9 +385,9 @@ const WorkLogs = () => {
         </Box>
 
         <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.2fr 1fr 1fr 1fr auto auto" }, gap: 1.5, alignItems: "center" }}>
             <Autocomplete
-              sx={{ flex: 1 }}
+              size="small"
               options={drivers}
               getOptionLabel={(option) => option.name || ""}
               value={selectedDriver}
@@ -396,11 +396,6 @@ const WorkLogs = () => {
               renderInput={(params) => <TextField {...params} label="Filter by Driver" />}
               noOptionsText="No drivers found"
             />
-            <Button variant="outlined" onClick={() => setSelectedDriver(null)} disabled={!selectedDriver} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 900 }}>
-              Clear Filter
-            </Button>
-          </Stack>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center", mt: 1.5 }}>
             <TextField select fullWidth size="small" label="Status" value={logsFilterStatus} onChange={(e) => setLogsFilterStatus(e.target.value)}>
               <MenuItem value="">All Statuses</MenuItem>
               <MenuItem value="pending">Pending</MenuItem>
@@ -409,6 +404,9 @@ const WorkLogs = () => {
             </TextField>
             <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={logsFilterDateFrom} onChange={(e) => setLogsFilterDateFrom(e.target.value)} />
             <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={logsFilterDateTo} onChange={(e) => setLogsFilterDateTo(e.target.value)} />
+            <Button size="small" variant="outlined" onClick={() => setSelectedDriver(null)} disabled={!selectedDriver} sx={{ borderRadius: 3, fontWeight: 850 }}>
+              Clear Driver
+            </Button>
             <Button size="small" variant="outlined" onClick={clearLogsFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
           </Box>
         </Paper>

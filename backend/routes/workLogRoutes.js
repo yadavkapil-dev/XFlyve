@@ -23,6 +23,12 @@ router.get(
   workLogController.getPendingLogsForAdmin
 );
 
+router.get(
+  "/admin/weekly-stats",
+  requireAdmin,
+  workLogController.getWeeklyStatsForAdmin
+);
+
 router.put(
   "/admin/:logId/approve",
   requireAdmin,

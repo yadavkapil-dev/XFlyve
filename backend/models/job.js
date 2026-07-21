@@ -105,6 +105,10 @@ jobSchema.index({ assignedTruck: 1, jobDate: 1 });
 // In-progress-on-truck checks on start/delete/out-of-service: Job.findOne/exists({ assignedTruck, status, recordStatus: {$ne:"archived"} })
 jobSchema.index({ assignedTruck: 1, status: 1 });
 
+// Phase 4: admin job list (getAllJobs) — Job.find({ recordStatus: {$ne} }).sort({ jobDate }), hit on every
+// paginated admin Jobs page load. Confirmed via explain() this was a COLLSCAN without this index.
+jobSchema.index({ recordStatus: 1, jobDate: 1 });
+
 jobSchema.virtual("assignedDriver").get(function () {
   return this.assignedTo;
 });

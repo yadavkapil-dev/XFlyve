@@ -306,7 +306,7 @@ const DriverHome = () => {
     if (!driverId) return;
 
     try {
-      const driverPods = await listPodsByDriver(driverId);
+      const driverPods = await listPodsByDriver(driverId, { limit: 100 });
       setPods(toArray(driverPods));
     } catch {
       setError("POD status could not be refreshed. Showing the last available result.");
@@ -325,7 +325,7 @@ const DriverHome = () => {
 
       const results = await Promise.allSettled([
         getJobsByDriver(driverId),
-        listPodsByDriver(driverId),
+        listPodsByDriver(driverId, { limit: 100 }),
       ]);
 
       setJobs(results[0].status === "fulfilled" ? toArray(results[0].value) : []);

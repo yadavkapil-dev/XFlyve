@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -15,12 +15,7 @@ import {
 import { alpha } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import {
-  getAllDrivers,
-  getAllJobs,
-  getAllTrucks,
-  getAllWorkLogsAdmin,
-} from "../api";
+import { getDashboardStats } from "../api";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
@@ -52,43 +47,22 @@ const palette = {
   violet: "#5b38c8",
 };
 
-const safeArray = (res) => {
-  if (Array.isArray(res?.data?.data)) return res.data.data;
-  if (Array.isArray(res?.data?.users)) return res.data.users;
-  if (Array.isArray(res?.data)) return res.data;
-  return [];
-};
-
 const toLocalDateKey = (value = new Date()) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString("en-CA");
 };
 
-const getStartOfWeek = () => {
-  const today = new Date();
-  const start = new Date(today);
-  const day = start.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  start.setDate(start.getDate() + diff);
-  start.setHours(0, 0, 0, 0);
-  return start;
-};
-
-const isThisWeek = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return false;
-
-  const start = getStartOfWeek();
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return date >= start && date < end;
-};
-
-const getDriverId = (driverOrId) => {
-  if (!driverOrId) return "";
-  if (typeof driverOrId === "string") return driverOrId;
-  return driverOrId._id || driverOrId.id || "";
+const emptyDashboard = {
+  todaysJobs: 0,
+  completedToday: 0,
+  pendingJobs: 0,
+  totalDrivers: 0,
+  missingWorkLogs: 0,
+  trucksOutOfService: 0,
+  weeklyLogs: 0,
+  weeklyHours: 0,
+  weeklyKilometres: 0,
 };
 
 const DashboardSection = ({ title, subtitle, children }) => (
@@ -415,10 +389,7 @@ const HomePage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [jobs, setJobs] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [trucks, setTrucks] = useState([]);
-  const [workLogs, setWorkLogs] = useState([]);
+  const [dashboard, setDashboard] = useState(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -427,20 +398,12 @@ const HomePage = () => {
       setLoading(true);
       setError("");
 
-      const results = await Promise.allSettled([
-        getAllJobs(),
-        getAllDrivers(),
-        getAllTrucks(),
-        getAllWorkLogsAdmin(),
-      ]);
-
-      setJobs(results[0].status === "fulfilled" ? safeArray(results[0].value) : []);
-      setDrivers(results[1].status === "fulfilled" ? safeArray(results[1].value) : []);
-      setTrucks(results[2].status === "fulfilled" ? safeArray(results[2].value) : []);
-      setWorkLogs(results[3].status === "fulfilled" ? safeArray(results[3].value) : []);
-
-      if (results.some((result) => result.status === "rejected")) {
-        setError("Some dashboard data could not be loaded. Showing available data.");
+      try {
+        const res = await getDashboardStats(toLocalDateKey());
+        setDashboard(res.data.data || emptyDashboard);
+      } catch (err) {
+        setError(err.response?.data?.message || "Dashboard data could not be loaded.");
+        setDashboard(emptyDashboard);
       }
 
       setLoading(false);
@@ -448,40 +411,6 @@ const HomePage = () => {
 
     fetchDashboardData();
   }, []);
-
-  const todayKey = toLocalDateKey();
-
-  const dashboard = useMemo(() => {
-    const todaysJobs = jobs.filter((job) => toLocalDateKey(job.jobDate) === todayKey);
-    const completedToday = todaysJobs.filter((job) => job.status === "completed");
-    const pendingJobs = todaysJobs.filter((job) => job.status === "pending");
-    const todaysLogs = workLogs.filter((log) => toLocalDateKey(log.date) === todayKey);
-    const weeklyLogs = workLogs.filter((log) => isThisWeek(log.date));
-    const driverIdsWithLogToday = new Set(
-      todaysLogs.map((log) => getDriverId(log.driverId)).filter(Boolean)
-    );
-
-    const weeklyHours = weeklyLogs.reduce(
-      (total, log) => total + (Number(log.hours) || 0),
-      0
-    );
-    const weeklyKilometres = weeklyLogs.reduce(
-      (total, log) => total + (Number(log.kilometers) || 0),
-      0
-    );
-
-    return {
-      todaysJobs: todaysJobs.length,
-      completedToday: completedToday.length,
-      pendingJobs: pendingJobs.length,
-      totalDrivers: drivers.length,
-      missingWorkLogs: Math.max(drivers.length - driverIdsWithLogToday.size, 0),
-      trucksOutOfService: trucks.filter((truck) => truck.status === "out-of-service" || truck.status === "maintenance").length,
-      weeklyLogs: weeklyLogs.length,
-      weeklyHours,
-      weeklyKilometres,
-    };
-  }, [drivers, jobs, todayKey, trucks, workLogs]);
 
   const quickActions = [
     {

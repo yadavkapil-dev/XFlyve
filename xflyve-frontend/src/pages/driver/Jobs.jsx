@@ -142,11 +142,11 @@ const DriverJobs = () => {
       setError("");
       const [jobsResult, podsResult] = await Promise.allSettled([
           getJobsByDriver(driverId),
-          listPodsByDriver(driverId),
+          listPodsByDriver(driverId, { limit: 100 }),
       ]);
 
       setJobs(jobsResult.status === "fulfilled" ? jobsResult.value.data.data || [] : []);
-      setPods(podsResult.status === "fulfilled" ? podsResult.value || [] : []);
+      setPods(podsResult.status === "fulfilled" ? podsResult.value?.data || [] : []);
 
       if (jobsResult.status === "rejected") {
         setError(jobsResult.reason?.response?.data?.message || "Failed to fetch jobs.");

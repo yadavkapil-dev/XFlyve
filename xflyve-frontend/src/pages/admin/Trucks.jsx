@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -10,6 +10,7 @@ import {
   DialogContentText,
   DialogTitle,
   FormControlLabel,
+  MenuItem,
   Paper,
   Stack,
   Switch,
@@ -21,7 +22,9 @@ import BuildCircleOutlinedIcon from "@mui/icons-material/BuildCircleOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import SearchIcon from "@mui/icons-material/Search";
 import { getAllTrucks, createTruck, updateTruck, deleteTruck } from "../../api";
+import PaginationControls from "../../components/PaginationControls";
 
 const palette = {
   ink: "#0b1220",
@@ -51,24 +54,52 @@ const Trucks = () => {
   const [formData, setFormData] = useState({ truckNumber: "", capacity: "", outOfService: false });
   const [editTruckId, setEditTruckId] = useState(null);
   const [deleteTruckId, setDeleteTruckId] = useState(null);
+  const [filterStatus, setFilterStatus] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState(null);
+  const [outOfServiceCount, setOutOfServiceCount] = useState(0);
 
-  const outOfServiceTrucks = useMemo(() => trucks.filter((truck) => truck.status === "out-of-service" || truck.status === "maintenance"), [trucks]);
+  // Debounce the search box so we don't fire a request on every keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
 
-  const fetchTrucks = async () => {
+  // Any filter change should reset back to page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [filterStatus, search]);
+
+  const fetchTrucks = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getAllTrucks();
+      const params = { page, limit, sort: "truckNumber" };
+      if (filterStatus) params.status = filterStatus;
+      if (search) params.search = search;
+
+      const res = await getAllTrucks(params);
       setTrucks(res.data.data || []);
+      setPagination(res.data.pagination || null);
+      setOutOfServiceCount(res.data.outOfServiceCount ?? 0);
     } catch {
       setError("Failed to load trucks");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, limit, filterStatus, search]);
 
   useEffect(() => {
     fetchTrucks();
-  }, []);
+  }, [fetchTrucks]);
+
+  const clearFilters = () => {
+    setFilterStatus("");
+    setSearchInput("");
+    setSearch("");
+  };
 
   const resetForm = () => {
     setEditTruckId(null);
@@ -137,9 +168,9 @@ const Trucks = () => {
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2, borderRadius: 3 }}>{success}</Alert>}
 
-        {outOfServiceTrucks.length > 0 && (
+        {outOfServiceCount > 0 && (
           <Alert severity="warning" sx={{ mb: 2, borderRadius: 3 }}>
-            {outOfServiceTrucks.length} truck{outOfServiceTrucks.length === 1 ? "" : "s"} currently marked out of service.
+            {outOfServiceCount} truck{outOfServiceCount === 1 ? "" : "s"} currently marked out of service.
           </Alert>
         )}
 
@@ -170,6 +201,29 @@ const Trucks = () => {
 
           <Stack spacing={2}>
             <Typography variant="h5" fontWeight={950} sx={{ color: palette.ink, letterSpacing: "-0.045em" }}>Fleet</Typography>
+
+            <Paper elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+                <TextField
+                  fullWidth
+                  label="Search"
+                  placeholder="Truck number"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: palette.muted }} fontSize="small" /> }}
+                />
+                <TextField select fullWidth label="Status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                  <MenuItem value="">All Statuses</MenuItem>
+                  <MenuItem value="available">Available</MenuItem>
+                  <MenuItem value="on-route">On route</MenuItem>
+                  <MenuItem value="out-of-service">Out of service</MenuItem>
+                </TextField>
+                <Button variant="outlined" onClick={clearFilters} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
+                  Clear
+                </Button>
+              </Box>
+            </Paper>
+
             {loading ? (
               <Paper elevation={0} sx={{ p: 3, borderRadius: 5, border: "1px solid", borderColor: palette.line }}>Loading trucks...</Paper>
             ) : trucks.length === 0 ? (
@@ -207,6 +261,13 @@ const Trucks = () => {
                 })}
               </Box>
             )}
+
+            <PaginationControls
+              pagination={pagination}
+              onPageChange={setPage}
+              onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+              palette={palette}
+            />
           </Stack>
         </Box>
 

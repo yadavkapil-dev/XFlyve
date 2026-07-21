@@ -5,8 +5,33 @@ const { Readable } = require("stream");
 const logger = require("../utils/logger");
 const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
+const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
+const { buildDateRangeFilter } = require("../utils/dateRange");
 
 const POD_HISTORY_DAYS = 30;
+const POD_SORT_FIELDS = ["uploadDate", "createdAt"];
+const POD_DEFAULT_SORT = { createdAt: -1 };
+
+// status + uploadDate-range filters — safe to apply on every POD list
+// endpoint, including the single-driver-scoped one.
+const applyPodStatusAndDateFilters = (query, reqQuery) => {
+  if (reqQuery.status) query.status = reqQuery.status;
+  const dateFilter = buildDateRangeFilter("uploadDate", { from: reqQuery.dateFrom, to: reqQuery.dateTo });
+  if (dateFilter) Object.assign(query, dateFilter);
+  return query;
+};
+
+// driverId filter — only for the admin-wide endpoints (listAllPODs,
+// listPendingPODApprovals). Deliberately NOT applied on
+// listPODsByDriver, whose driverId comes from the URL path, not the
+// query string — accepting a query-string override there would let a
+// driver widen their own scoped request to another driver's PODs.
+const applyPodDriverFilter = (query, reqQuery) => {
+  if (reqQuery.driverId && mongoose.Types.ObjectId.isValid(reqQuery.driverId)) {
+    query.driverId = reqQuery.driverId;
+  }
+  return query;
+};
 
 const toDateTime = (value, fallback = 0) => {
   const time = value ? new Date(value).getTime() : fallback;
@@ -131,7 +156,9 @@ exports.getPOD = async (req, res) => {
 };
 
 /**
- * List PODs by driver
+ * List PODs by driver — paginated, filterable.
+ * Query params: page, limit, sort (uploadDate|createdAt), status,
+ * dateFrom/dateTo (uploadDate range), includeOlder.
  */
 exports.listPODsByDriver = async (req, res) => {
   try {
@@ -145,6 +172,9 @@ exports.listPODsByDriver = async (req, res) => {
     if (req.user.role !== "admin" && userId.toString() !== driverId) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
+
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, POD_SORT_FIELDS, { uploadDate: -1 });
 
     const includeOlder = req.query.includeOlder === "true";
     const query = { driverId };
@@ -164,24 +194,25 @@ exports.listPODsByDriver = async (req, res) => {
       ];
     }
 
-    const pods = await JobPod.find(query)
-      .populate(
-        "jobId",
-        "jobDate pickupLocation deliveryLocation dropoffLocation description status jobNumber"
-      )
-      .lean();
+    applyPodStatusAndDateFilters(query, req.query);
 
-    pods.sort((a, b) => {
-      const aUploadTime = toDateTime(a.uploadDate, toDateTime(a.createdAt));
-      const bUploadTime = toDateTime(b.uploadDate, toDateTime(b.createdAt));
-
-      if (aUploadTime !== bUploadTime) return bUploadTime - aUploadTime;
-      return toDateTime(b.createdAt) - toDateTime(a.createdAt);
-    });
+    const [pods, total] = await Promise.all([
+      JobPod.find(query)
+        .populate(
+          "jobId",
+          "jobDate pickupLocation deliveryLocation dropoffLocation description status jobNumber"
+        )
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      JobPod.countDocuments(query),
+    ]);
 
     return res.status(200).json({
       success: true,
       data: pods.map(formatPODForDriverHistory),
+      pagination: buildPaginationMeta({ page, limit, total }),
     });
   } catch (err) {
     logger.error("List PODs by driver error: %o", err);
@@ -332,14 +363,33 @@ exports.rejectPOD = async (req, res) => {
   }
 };
 
+// Query params: page, limit, sort (uploadDate|createdAt), driverId,
+// dateFrom/dateTo (uploadDate range).
 exports.listPendingPODApprovals = async (req, res) => {
   try {
-    const pods = await JobPod.find({ status: "pending" })
-      .populate("driverId", "name email driverType role")
-      .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
-      .sort({ createdAt: -1 });
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, POD_SORT_FIELDS, POD_DEFAULT_SORT);
 
-    return res.status(200).json({ success: true, data: pods });
+    const query = { status: "pending" };
+    applyPodDriverFilter(query, req.query);
+    const dateFilter = buildDateRangeFilter("uploadDate", { from: req.query.dateFrom, to: req.query.dateTo });
+    if (dateFilter) Object.assign(query, dateFilter);
+
+    const [pods, total] = await Promise.all([
+      JobPod.find(query)
+        .populate("driverId", "name email driverType role")
+        .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      JobPod.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: pods,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    });
   } catch (err) {
     logger.error("List pending POD approvals error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
@@ -347,15 +397,34 @@ exports.listPendingPODApprovals = async (req, res) => {
 };
 
 /**
- * Admin: list all PODs
+ * Admin: list all PODs — paginated, filterable.
+ * Query params: page, limit, sort (uploadDate|createdAt), status, driverId,
+ * dateFrom/dateTo (uploadDate range).
  */
 exports.listAllPODs = async (req, res) => {
   try {
-    const pods = await JobPod.find()
-      .populate("driverId", "name email driverType role")
-      .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
-      .sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, data: pods });
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, POD_SORT_FIELDS, POD_DEFAULT_SORT);
+
+    const query = {};
+    applyPodStatusAndDateFilters(query, req.query);
+    applyPodDriverFilter(query, req.query);
+
+    const [pods, total] = await Promise.all([
+      JobPod.find(query)
+        .populate("driverId", "name email driverType role")
+        .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      JobPod.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: pods,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    });
   } catch (err) {
     logger.error("Admin listAllPODs error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });

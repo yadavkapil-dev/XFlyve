@@ -62,4 +62,7 @@ const jobPodSchema = new mongoose.Schema(
 // Driver POD history (listPodsByDriver, hit on every driver/admin POD view): JobPod.find({ driverId })
 jobPodSchema.index({ driverId: 1 });
 
+// Phase 4: pending-approvals queue (listPendingPODApprovals/listAllPODs) — JobPod.find({ status }).sort({ createdAt })
+jobPodSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model("JobPod", jobPodSchema);

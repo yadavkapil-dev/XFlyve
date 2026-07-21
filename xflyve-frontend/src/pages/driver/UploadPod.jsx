@@ -85,8 +85,8 @@ const DriverPOD = () => {
     setLoading(true);
     setError("");
     try {
-      const data = await listPodsByDriver(driverId);
-      setPods(data);
+      const res = await listPodsByDriver(driverId, { limit: 100 });
+      setPods(res.data);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load PODs");
     } finally {

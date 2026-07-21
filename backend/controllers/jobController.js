@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Job = require("../models/job");
 const Driver = require("../models/driver");
 const Truck = require("../models/truck");
@@ -9,6 +10,13 @@ const {
   completeJob,
   reassignJob,
 } = require("../services/jobTransitionService");
+const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
+const { buildSearchOr } = require("../utils/search");
+const { buildDateRangeFilter } = require("../utils/dateRange");
+
+const JOB_SORT_FIELDS = ["jobDate", "createdAt", "status", "title"];
+const JOB_DEFAULT_SORT = { jobDate: 1 };
+const JOB_SEARCH_FIELDS = ["customerName", "pickupLocation", "deliveryLocation"];
 
 const DRIVER_STATUS_TRANSITIONS = {
   pending: "in-progress",
@@ -156,16 +164,50 @@ exports.createJob = async (req, res) => {
 };
 
 
-// @desc    Get all jobs (admin only)
+// @desc    Get all jobs (admin only) — paginated, searchable, filterable
 // @route   GET /api/jobs
 // @access  Admin
+// Query params: page, limit, sort (jobDate|createdAt|status|title, prefix
+// "-" for descending), search (matches customer/pickup/delivery location),
+// status, jobType, assignedTo, assignedTruck, dateFrom, dateTo (jobDate range).
 exports.getAllJobs = async (req, res) => {
   try {
-    const jobs = await Job.find({ recordStatus: { $ne: "archived" } })
-      .populate("assignedTo", "name email driverType")
-      .populate("assignedTruck", "truckNumber")
-      .lean();
-    res.status(200).json({ status: "success", results: jobs.length, data: jobs });
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, JOB_SORT_FIELDS, JOB_DEFAULT_SORT);
+
+    const query = { recordStatus: { $ne: "archived" } };
+
+    const searchOr = buildSearchOr(req.query.search, JOB_SEARCH_FIELDS);
+    if (searchOr) Object.assign(query, searchOr);
+
+    if (req.query.status) query.status = req.query.status;
+    if (req.query.jobType) query.jobType = req.query.jobType;
+    if (req.query.assignedTo && mongoose.Types.ObjectId.isValid(req.query.assignedTo)) {
+      query.assignedTo = req.query.assignedTo;
+    }
+    if (req.query.assignedTruck && mongoose.Types.ObjectId.isValid(req.query.assignedTruck)) {
+      query.assignedTruck = req.query.assignedTruck;
+    }
+
+    const dateFilter = buildDateRangeFilter("jobDate", { from: req.query.dateFrom, to: req.query.dateTo });
+    if (dateFilter) Object.assign(query, dateFilter);
+
+    const [jobs, total] = await Promise.all([
+      Job.find(query)
+        .populate("assignedTo", "name email driverType")
+        .populate("assignedTruck", "truckNumber")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Job.countDocuments(query),
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: jobs,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    });
   } catch (err) {
     logger.error("Get Jobs Error: %o", err);
     res.status(500).json({ status: "error", message: "Server error" });

@@ -93,8 +93,8 @@ const WorkDiary = () => {
     setLoading(true);
     setError("");
     try {
-      const data = await listWorkDiariesByDriver(driverId);
-      setWorkDiaries(data);
+      const res = await listWorkDiariesByDriver(driverId, { limit: 100 });
+      setWorkDiaries(res.data);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load work diaries");
     } finally {

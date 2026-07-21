@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -22,9 +22,11 @@ import EditIcon from "@mui/icons-material/Edit";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import RouteOutlinedIcon from "@mui/icons-material/RouteOutlined";
+import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { getAllJobs, deleteJob, getAllTrucks, getAllTruckAssignments, getAllDrivers, updateJob } from "../../api";
+import PaginationControls from "../../components/PaginationControls";
 
 const palette = {
   ink: "#0b1220",
@@ -82,27 +84,57 @@ const Jobs = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filterDriver, setFilterDriver] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterJobType, setFilterJobType] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState(null);
 
   const navigate = useNavigate();
 
-  const fetchJobs = async () => {
+  // Debounce the search box so we don't fire a request on every keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  // Any filter change should reset back to page 1 — staying on, say, page 3
+  // of a now much-shorter filtered result set would just show an empty page.
+  useEffect(() => {
+    setPage(1);
+  }, [filterDriver, filterDate, filterStatus, filterJobType, search]);
+
+  const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getAllJobs();
+      const params = { page, limit, sort: "jobDate" };
+      if (filterDriver) params.assignedTo = filterDriver;
+      if (filterDate) {
+        params.dateFrom = filterDate;
+        params.dateTo = filterDate;
+      }
+      if (filterStatus) params.status = filterStatus;
+      if (filterJobType) params.jobType = filterJobType;
+      if (search) params.search = search;
+
+      const res = await getAllJobs(params);
       setJobs(res.data.data || []);
+      setPagination(res.data.pagination || null);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to fetch jobs");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, limit, filterDriver, filterDate, filterStatus, filterJobType, search]);
 
   const fetchTrucksDrivers = async () => {
     try {
       const [trucksRes, assignmentsRes, driversRes] = await Promise.all([
         getAllTrucks(),
         getAllTruckAssignments(),
-        getAllDrivers(),
+        getAllDrivers({ limit: 100 }),
       ]);
       setTrucks(trucksRes.data.data || []);
       setAssignments(assignmentsRes.data.data || []);
@@ -114,15 +146,20 @@ const Jobs = () => {
 
   useEffect(() => {
     fetchJobs();
+  }, [fetchJobs]);
+
+  useEffect(() => {
     fetchTrucksDrivers();
   }, []);
 
-  const filteredJobs = useMemo(() => {
-    return jobs
-      .filter((job) => (filterDriver ? job.assignedTo?._id === filterDriver : true))
-      .filter((job) => (filterDate ? dayjs(job.jobDate).isSame(dayjs(filterDate), "day") : true))
-      .sort((a, b) => new Date(a.jobDate) - new Date(b.jobDate));
-  }, [jobs, filterDriver, filterDate]);
+  const clearFilters = () => {
+    setFilterDriver("");
+    setFilterDate("");
+    setFilterStatus("");
+    setFilterJobType("");
+    setSearchInput("");
+    setSearch("");
+  };
 
   const selectableTrucks = useMemo(() => trucks.filter(isSelectableTruck), [trucks]);
   const selectedEditTruck = trucks.find((truck) => truck._id === editJob?.truckId);
@@ -207,8 +244,8 @@ const Jobs = () => {
     if (!deleteTarget) return;
     try {
       await deleteJob(deleteTarget._id);
-      setJobs((prev) => prev.filter((job) => job._id !== deleteTarget._id));
       setDeleteTarget(null);
+      fetchJobs();
     } catch (err) {
       setError(err.response?.data?.message || "Failed to delete job");
     }
@@ -233,13 +270,32 @@ const Jobs = () => {
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
 
         <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.2fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.4fr 1fr 1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+            <TextField
+              fullWidth
+              label="Search"
+              placeholder="Customer, pickup or delivery location"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: palette.muted }} fontSize="small" /> }}
+            />
             <TextField select fullWidth label="Driver" value={filterDriver} onChange={(e) => setFilterDriver(e.target.value)}>
               <MenuItem value="">All Drivers</MenuItem>
               {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
             </TextField>
+            <TextField select fullWidth label="Status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+              <MenuItem value="">All Statuses</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="in-progress">In progress</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+            </TextField>
+            <TextField select fullWidth label="Run Type" value={filterJobType} onChange={(e) => setFilterJobType(e.target.value)}>
+              <MenuItem value="">All Types</MenuItem>
+              <MenuItem value="local">Local</MenuItem>
+              <MenuItem value="interstate">Interstate</MenuItem>
+            </TextField>
             <TextField fullWidth type="date" label="Run Date" InputLabelProps={{ shrink: true }} value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
-            <Button variant="outlined" onClick={() => { setFilterDriver(""); setFilterDate(""); }} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
+            <Button variant="outlined" onClick={clearFilters} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
               Clear
             </Button>
           </Box>
@@ -247,14 +303,14 @@ const Jobs = () => {
 
         {loading ? (
           <Paper elevation={0} sx={{ p: 5, textAlign: "center", borderRadius: 5, border: "1px solid", borderColor: palette.line }}><CircularProgress /></Paper>
-        ) : filteredJobs.length === 0 ? (
+        ) : jobs.length === 0 ? (
           <Paper elevation={0} sx={{ p: 3, borderRadius: 5, border: "1px solid", borderColor: alpha(palette.teal, 0.16), bgcolor: alpha(palette.teal, 0.055) }}>
             <Typography fontWeight={950}>No runs found</Typography>
             <Typography sx={{ color: palette.muted }}>Create a run or adjust your filters.</Typography>
           </Paper>
         ) : (
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(2, 1fr)" }, gap: 2 }}>
-            {filteredJobs.map((job) => {
+            {jobs.map((job) => {
               const meta = statusMeta(job.status);
               return (
                 <Paper key={job._id} elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
@@ -284,6 +340,13 @@ const Jobs = () => {
             })}
           </Box>
         )}
+
+        <PaginationControls
+          pagination={pagination}
+          onPageChange={setPage}
+          onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+          palette={palette}
+        />
 
         <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 5 } }}>
           <DialogTitle sx={{ fontWeight: 950 }}>Edit Run</DialogTitle>

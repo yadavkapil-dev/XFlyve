@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Box,
   Button,
   Chip,
   CircularProgress,
+  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -24,10 +25,12 @@ import {
   getWorkLogsByDriverAdmin,
   getAllDrivers,
   getPendingWorkLogsAdmin,
+  getWeeklyWorkLogStatsAdmin,
   approveWorkLogAdmin,
   rejectWorkLogAdmin,
   getJobsReadyForInvoicing,
 } from "../../api";
+import PaginationControls from "../../components/PaginationControls";
 
 const palette = {
   ink: "#0b1220",
@@ -71,12 +74,24 @@ const StatPill = ({ icon, label, value }) => (
 
 const WorkLogs = () => {
   const [logs, setLogs] = useState([]);
+  const [logsPagination, setLogsPagination] = useState(null);
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsLimit, setLogsLimit] = useState(20);
+  const [logsFilterStatus, setLogsFilterStatus] = useState("");
+  const [logsFilterDateFrom, setLogsFilterDateFrom] = useState("");
+  const [logsFilterDateTo, setLogsFilterDateTo] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [pendingLogs, setPendingLogs] = useState([]);
+  const [pendingPagination, setPendingPagination] = useState(null);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [pendingLimit, setPendingLimit] = useState(20);
+  const [pendingFilterDriver, setPendingFilterDriver] = useState("");
+  const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState("");
+  const [pendingFilterDateTo, setPendingFilterDateTo] = useState("");
   const [invoiceReadyJobs, setInvoiceReadyJobs] = useState([]);
   const [reviewLoading, setReviewLoading] = useState(true);
   const [actionId, setActionId] = useState("");
@@ -84,7 +99,7 @@ const WorkLogs = () => {
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
-        const res = await getAllDrivers();
+        const res = await getAllDrivers({ limit: 100 });
         if (res.data.status === "success") setDrivers(res.data.data || []);
         else setError("Failed to fetch drivers");
       } catch {
@@ -94,62 +109,115 @@ const WorkLogs = () => {
     fetchDrivers();
   }, []);
 
-  const fetchRecords = async (driverId) => {
+  // Reset to page 1 whenever a main-list filter changes (driver, status, date range).
+  useEffect(() => {
+    setLogsPage(1);
+  }, [selectedDriver, logsFilterStatus, logsFilterDateFrom, logsFilterDateTo]);
+
+  const fetchRecords = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = driverId ? await getWorkLogsByDriverAdmin(driverId) : await getAllWorkLogsAdmin();
-      if (res.data.success) setLogs(res.data.data || []);
-      else {
+      const driverId = selectedDriver?._id || null;
+      const params = { page: logsPage, limit: logsLimit };
+      if (logsFilterStatus) params.status = logsFilterStatus;
+      if (logsFilterDateFrom) params.dateFrom = logsFilterDateFrom;
+      if (logsFilterDateTo) params.dateTo = logsFilterDateTo;
+
+      const res = driverId ? await getWorkLogsByDriverAdmin(driverId, params) : await getAllWorkLogsAdmin(params);
+      if (res.data.success) {
+        setLogs(res.data.data || []);
+        setLogsPagination(res.data.pagination || null);
+      } else {
         setError(res.data.message || "Failed to fetch daily records");
         setLogs([]);
+        setLogsPagination(null);
       }
     } catch (err) {
       setError(err.response?.data?.message || "Server error fetching daily records");
       setLogs([]);
+      setLogsPagination(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDriver, logsPage, logsLimit, logsFilterStatus, logsFilterDateFrom, logsFilterDateTo]);
 
-  const fetchReviewQueues = async () => {
+  // Reset to page 1 whenever a pending-queue filter changes.
+  useEffect(() => {
+    setPendingPage(1);
+  }, [pendingFilterDriver, pendingFilterDateFrom, pendingFilterDateTo]);
+
+  const fetchReviewQueues = useCallback(async () => {
     setReviewLoading(true);
     try {
+      const pendingParams = { page: pendingPage, limit: pendingLimit };
+      if (pendingFilterDriver) pendingParams.driverId = pendingFilterDriver;
+      if (pendingFilterDateFrom) pendingParams.dateFrom = pendingFilterDateFrom;
+      if (pendingFilterDateTo) pendingParams.dateTo = pendingFilterDateTo;
+
       const [pendingRes, invoiceRes] = await Promise.all([
-        getPendingWorkLogsAdmin(),
+        getPendingWorkLogsAdmin(pendingParams),
         getJobsReadyForInvoicing(),
       ]);
       setPendingLogs(pendingRes.data.data || []);
+      setPendingPagination(pendingRes.data.pagination || null);
       setInvoiceReadyJobs(invoiceRes.data.data || []);
     } catch (err) {
       setError(err.response?.data?.message || "Server error loading approval queues");
     } finally {
       setReviewLoading(false);
     }
-  };
+  }, [pendingPage, pendingLimit, pendingFilterDriver, pendingFilterDateFrom, pendingFilterDateTo]);
 
   useEffect(() => {
     fetchRecords();
-    fetchReviewQueues();
-  }, []);
+  }, [fetchRecords]);
 
-  const weeklySummary = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay() + 1);
-    start.setHours(0, 0, 0, 0);
-    const weekLogs = logs.filter((log) => new Date(log.date) >= start);
-    return {
-      count: weekLogs.length,
-      hours: weekLogs.reduce((sum, log) => sum + (Number(log.hours) || 0), 0),
-      km: weekLogs.reduce((sum, log) => sum + (Number(log.kilometers) || 0), 0),
-      deliveries: weekLogs.reduce((sum, log) => sum + (Number(log.deliveriesDone) || 0), 0),
-    };
-  }, [logs]);
+  useEffect(() => {
+    fetchReviewQueues();
+  }, [fetchReviewQueues]);
+
+  const clearLogsFilters = () => {
+    setLogsFilterStatus("");
+    setLogsFilterDateFrom("");
+    setLogsFilterDateTo("");
+  };
+
+  const clearPendingFilters = () => {
+    setPendingFilterDriver("");
+    setPendingFilterDateFrom("");
+    setPendingFilterDateTo("");
+  };
+
+  // Server-side aggregate over the whole week's logs (scoped to the selected
+  // driver, if any) — not the currently-loaded page of `logs`, which is
+  // capped at `logsLimit` and would silently undercount once a driver has
+  // more logs this week than fit on one page.
+  const [weeklySummary, setWeeklySummary] = useState({ count: 0, hours: 0, km: 0, deliveries: 0 });
+
+  const fetchWeeklySummary = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedDriver?._id) params.driverId = selectedDriver._id;
+      const res = await getWeeklyWorkLogStatsAdmin(params);
+      const data = res.data.data || {};
+      setWeeklySummary({
+        count: data.weeklyLogs || 0,
+        hours: data.weeklyHours || 0,
+        km: data.weeklyKilometres || 0,
+        deliveries: data.weeklyDeliveries || 0,
+      });
+    } catch {
+      setError((prev) => prev || "Weekly summary could not be loaded.");
+    }
+  }, [selectedDriver]);
+
+  useEffect(() => {
+    fetchWeeklySummary();
+  }, [fetchWeeklySummary]);
 
   const handleDriverChange = (event, newValue) => {
     setSelectedDriver(newValue);
-    fetchRecords(newValue ? newValue._id : null);
   };
 
   const statusChip = (status = "pending") => {
@@ -187,10 +255,7 @@ const WorkLogs = () => {
   };
 
   const refreshAfterAction = async () => {
-    await Promise.all([
-      fetchReviewQueues(),
-      fetchRecords(selectedDriver?._id || null),
-    ]);
+    await Promise.all([fetchReviewQueues(), fetchRecords()]);
   };
 
   const handleApprove = async (logId) => {
@@ -249,15 +314,24 @@ const WorkLogs = () => {
                   <Typography variant="h5" fontWeight={950} sx={{ color: palette.ink, letterSpacing: "-0.045em" }}>Pending record approvals</Typography>
                   <Typography variant="body2" sx={{ color: palette.muted }}>Approve driver-submitted work before payroll prep.</Typography>
                 </Box>
-                <Chip label={`${pendingLogs.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
+                <Chip label={`${pendingPagination?.total ?? pendingLogs.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
               </Stack>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+                <TextField select fullWidth size="small" label="Driver" value={pendingFilterDriver} onChange={(e) => setPendingFilterDriver(e.target.value)}>
+                  <MenuItem value="">All Drivers</MenuItem>
+                  {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
+                </TextField>
+                <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={pendingFilterDateFrom} onChange={(e) => setPendingFilterDateFrom(e.target.value)} />
+                <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={pendingFilterDateTo} onChange={(e) => setPendingFilterDateTo(e.target.value)} />
+                <Button size="small" variant="outlined" onClick={clearPendingFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
+              </Box>
               {reviewLoading ? (
                 <Box sx={{ py: 2, textAlign: "center" }}><CircularProgress size={28} /></Box>
               ) : pendingLogs.length === 0 ? (
                 <Typography sx={{ color: palette.muted }}>No Daily Records waiting for approval.</Typography>
               ) : (
                 <Stack spacing={1.5}>
-                  {pendingLogs.slice(0, 4).map((log) => (
+                  {pendingLogs.map((log) => (
                     <Paper key={log._id} elevation={0} sx={{ p: 2, borderRadius: 4, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
                       <Stack spacing={1.5}>
                         <Box>
@@ -273,6 +347,12 @@ const WorkLogs = () => {
                   ))}
                 </Stack>
               )}
+              <PaginationControls
+                pagination={pendingPagination}
+                onPageChange={setPendingPage}
+                onLimitChange={(newLimit) => { setPendingLimit(newLimit); setPendingPage(1); }}
+                palette={palette}
+              />
             </Stack>
           </Paper>
 
@@ -316,10 +396,21 @@ const WorkLogs = () => {
               renderInput={(params) => <TextField {...params} label="Filter by Driver" />}
               noOptionsText="No drivers found"
             />
-            <Button variant="outlined" onClick={() => { setSelectedDriver(null); fetchRecords(); }} disabled={!selectedDriver} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 900 }}>
+            <Button variant="outlined" onClick={() => setSelectedDriver(null)} disabled={!selectedDriver} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 900 }}>
               Clear Filter
             </Button>
           </Stack>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center", mt: 1.5 }}>
+            <TextField select fullWidth size="small" label="Status" value={logsFilterStatus} onChange={(e) => setLogsFilterStatus(e.target.value)}>
+              <MenuItem value="">All Statuses</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="approved">Approved</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
+            </TextField>
+            <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={logsFilterDateFrom} onChange={(e) => setLogsFilterDateFrom(e.target.value)} />
+            <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={logsFilterDateTo} onChange={(e) => setLogsFilterDateTo(e.target.value)} />
+            <Button size="small" variant="outlined" onClick={clearLogsFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
+          </Box>
         </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
@@ -360,6 +451,13 @@ const WorkLogs = () => {
             ))}
           </Stack>
         )}
+
+        <PaginationControls
+          pagination={logsPagination}
+          onPageChange={setLogsPage}
+          onLimitChange={(newLimit) => { setLogsLimit(newLimit); setLogsPage(1); }}
+          palette={palette}
+        />
       </Box>
     </Box>
   );

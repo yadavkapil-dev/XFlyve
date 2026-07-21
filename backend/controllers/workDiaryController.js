@@ -5,8 +5,30 @@ const { Readable } = require("stream");
 const logger = require("../utils/logger");
 const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
+const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
+const { buildDateRangeFilter } = require("../utils/dateRange");
 
 const DIARY_HISTORY_DAYS = 30;
+const DIARY_SORT_FIELDS = ["uploadDate", "createdAt", "workDate"];
+const DIARY_DEFAULT_SORT = { createdAt: -1 };
+
+// status + uploadDate-range filters — safe on every diary list endpoint.
+const applyDiaryStatusAndDateFilters = (query, reqQuery) => {
+  if (reqQuery.status) query.status = reqQuery.status;
+  const dateFilter = buildDateRangeFilter("uploadDate", { from: reqQuery.dateFrom, to: reqQuery.dateTo });
+  if (dateFilter) Object.assign(query, dateFilter);
+  return query;
+};
+
+// driverId filter — only for the admin-wide pending queue, not the
+// single-driver-scoped listWorkDiariesByDriver (same reasoning as PODs:
+// that route's driverId comes from the URL path, not the query string).
+const applyDiaryDriverFilter = (query, reqQuery) => {
+  if (reqQuery.driverId && mongoose.Types.ObjectId.isValid(reqQuery.driverId)) {
+    query.driverId = reqQuery.driverId;
+  }
+  return query;
+};
 
 const toDateTime = (value, fallback = 0) => {
   const time = value ? new Date(value).getTime() : fallback;
@@ -154,7 +176,9 @@ exports.getWorkDiary = async (req, res) => {
 };
 
 /**
- * List all work diaries for a driver
+ * List all work diaries for a driver — paginated, filterable.
+ * Query params: page, limit, sort (uploadDate|createdAt|workDate), status,
+ * dateFrom/dateTo (uploadDate range), includeOlder.
  */
 exports.listWorkDiariesByDriver = async (req, res) => {
   try {
@@ -168,6 +192,9 @@ exports.listWorkDiariesByDriver = async (req, res) => {
     if (req.user.role !== "admin" && userId.toString() !== driverId) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
+
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, DIARY_SORT_FIELDS, { uploadDate: -1 });
 
     const includeOlder = req.query.includeOlder === "true";
     const query = { driverId };
@@ -187,23 +214,27 @@ exports.listWorkDiariesByDriver = async (req, res) => {
       ];
     }
 
-    const workDiaries = await WorkDiary.find(query)
-      .populate(
-        "jobId",
-        "jobDate pickupLocation deliveryLocation description status jobNumber"
-      )
-      .populate("truckId", "truckNumber name")
-      .lean();
+    applyDiaryStatusAndDateFilters(query, req.query);
 
-    workDiaries.sort((a, b) => {
-      const aUploadTime = toDateTime(a.uploadDate, toDateTime(a.createdAt));
-      const bUploadTime = toDateTime(b.uploadDate, toDateTime(b.createdAt));
+    const [workDiaries, total] = await Promise.all([
+      WorkDiary.find(query)
+        .populate(
+          "jobId",
+          "jobDate pickupLocation deliveryLocation description status jobNumber"
+        )
+        .populate("truckId", "truckNumber name")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      WorkDiary.countDocuments(query),
+    ]);
 
-      if (aUploadTime !== bUploadTime) return bUploadTime - aUploadTime;
-      return toDateTime(b.createdAt) - toDateTime(a.createdAt);
+    return res.status(200).json({
+      success: true,
+      data: workDiaries,
+      pagination: buildPaginationMeta({ page, limit, total }),
     });
-
-    return res.status(200).json({ success: true, data: workDiaries });
   } catch (err) {
     logger.error("List work diaries by driver error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
@@ -353,15 +384,34 @@ exports.rejectWorkDiary = async (req, res) => {
   }
 };
 
+// Query params: page, limit, sort (uploadDate|createdAt|workDate), driverId,
+// dateFrom/dateTo (uploadDate range).
 exports.listPendingWorkDiaryApprovals = async (req, res) => {
   try {
-    const diaries = await WorkDiary.find({ status: "pending" })
-      .populate("driverId", "name email driverType role")
-      .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
-      .populate("truckId", "truckNumber")
-      .sort({ createdAt: -1 });
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, DIARY_SORT_FIELDS, DIARY_DEFAULT_SORT);
 
-    return res.status(200).json({ success: true, data: diaries });
+    const query = { status: "pending" };
+    applyDiaryDriverFilter(query, req.query);
+    const dateFilter = buildDateRangeFilter("uploadDate", { from: req.query.dateFrom, to: req.query.dateTo });
+    if (dateFilter) Object.assign(query, dateFilter);
+
+    const [diaries, total] = await Promise.all([
+      WorkDiary.find(query)
+        .populate("driverId", "name email driverType role")
+        .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
+        .populate("truckId", "truckNumber")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      WorkDiary.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: diaries,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    });
   } catch (err) {
     logger.error("List pending work diary approvals error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });

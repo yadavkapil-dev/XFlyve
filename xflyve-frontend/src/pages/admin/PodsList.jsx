@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -11,6 +11,7 @@ import {
   Paper,
   Select,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -20,6 +21,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DownloadIcon from "@mui/icons-material/Download";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { getAllDrivers, listPodsByDriver, deletePod, getPod, listPendingPods, approvePod, rejectPod, downloadAllPods } from "../../api";
+import PaginationControls from "../../components/PaginationControls";
 
 const palette = {
   ink: "#0b1220",
@@ -36,7 +38,21 @@ const AdminPODs = () => {
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState("");
   const [pods, setPods] = useState([]);
+  const [podsPagination, setPodsPagination] = useState(null);
+  const [podsPage, setPodsPage] = useState(1);
+  const [podsLimit, setPodsLimit] = useState(20);
+  const [podsFilterStatus, setPodsFilterStatus] = useState("");
+  const [podsFilterDateFrom, setPodsFilterDateFrom] = useState("");
+  const [podsFilterDateTo, setPodsFilterDateTo] = useState("");
+
   const [pendingPods, setPendingPods] = useState([]);
+  const [pendingPagination, setPendingPagination] = useState(null);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [pendingLimit, setPendingLimit] = useState(20);
+  const [pendingFilterDriver, setPendingFilterDriver] = useState("");
+  const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState("");
+  const [pendingFilterDateTo, setPendingFilterDateTo] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [actionId, setActionId] = useState("");
@@ -44,21 +60,32 @@ const AdminPODs = () => {
   const [success, setSuccess] = useState("");
   const [downloadingAll, setDownloadingAll] = useState(false);
 
-  const fetchPendingPods = async () => {
+  // Reset to page 1 whenever a pending-queue filter changes.
+  useEffect(() => {
+    setPendingPage(1);
+  }, [pendingFilterDriver, pendingFilterDateFrom, pendingFilterDateTo]);
+
+  const fetchPendingPods = useCallback(async () => {
     setPendingLoading(true);
     try {
-      setPendingPods(await listPendingPods());
+      const params = { page: pendingPage, limit: pendingLimit };
+      if (pendingFilterDriver) params.driverId = pendingFilterDriver;
+      if (pendingFilterDateFrom) params.dateFrom = pendingFilterDateFrom;
+      if (pendingFilterDateTo) params.dateTo = pendingFilterDateTo;
+      const res = await listPendingPods(params);
+      setPendingPods(res.data);
+      setPendingPagination(res.pagination || null);
     } catch (err) {
       setError(err.response?.data?.message || "Server error loading pending POD approvals");
     } finally {
       setPendingLoading(false);
     }
-  };
+  }, [pendingPage, pendingLimit, pendingFilterDriver, pendingFilterDateFrom, pendingFilterDateTo]);
 
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
-        const res = await getAllDrivers();
+        const res = await getAllDrivers({ limit: 100 });
         if (res.data.status === "success") setDrivers(res.data.data || []);
         else setError("Failed to load drivers");
       } catch (err) {
@@ -66,28 +93,44 @@ const AdminPODs = () => {
       }
     };
     fetchDrivers();
-    fetchPendingPods();
   }, []);
 
   useEffect(() => {
+    fetchPendingPods();
+  }, [fetchPendingPods]);
+
+  // Reset to page 1 whenever a by-driver filter changes (or the driver itself changes).
+  useEffect(() => {
+    setPodsPage(1);
+  }, [selectedDriver, podsFilterStatus, podsFilterDateFrom, podsFilterDateTo]);
+
+  const fetchPods = useCallback(async () => {
     setError("");
     setSuccess("");
     if (!selectedDriver) {
       setPods([]);
+      setPodsPagination(null);
       return;
     }
-    const fetchPods = async () => {
-      setLoading(true);
-      try {
-        setPods(await listPodsByDriver(selectedDriver));
-      } catch (err) {
-        setError(err.response?.data?.message || "Server error fetching PODs");
-      } finally {
-        setLoading(false);
-      }
-    };
+    setLoading(true);
+    try {
+      const params = { page: podsPage, limit: podsLimit };
+      if (podsFilterStatus) params.status = podsFilterStatus;
+      if (podsFilterDateFrom) params.dateFrom = podsFilterDateFrom;
+      if (podsFilterDateTo) params.dateTo = podsFilterDateTo;
+      const res = await listPodsByDriver(selectedDriver, params);
+      setPods(res.data);
+      setPodsPagination(res.pagination || null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Server error fetching PODs");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDriver, podsPage, podsLimit, podsFilterStatus, podsFilterDateFrom, podsFilterDateTo]);
+
+  useEffect(() => {
     fetchPods();
-  }, [selectedDriver]);
+  }, [fetchPods]);
 
   const driverName = (driver) => {
     if (driver?.name) return driver.name;
@@ -99,9 +142,21 @@ const AdminPODs = () => {
     return <Chip label={status} sx={{ color, bgcolor: alpha(color, 0.1), fontWeight: 900, textTransform: "capitalize" }} />;
   };
 
+  const clearPodsFilters = () => {
+    setPodsFilterStatus("");
+    setPodsFilterDateFrom("");
+    setPodsFilterDateTo("");
+  };
+
+  const clearPendingFilters = () => {
+    setPendingFilterDriver("");
+    setPendingFilterDateFrom("");
+    setPendingFilterDateTo("");
+  };
+
   const refreshPods = async () => {
     await fetchPendingPods();
-    if (selectedDriver) setPods(await listPodsByDriver(selectedDriver));
+    await fetchPods();
   };
 
   const handleApprove = async (podId) => {
@@ -141,7 +196,7 @@ const AdminPODs = () => {
     try {
       await deletePod(id);
       setSuccess("POD deleted.");
-      setPods((prev) => prev.filter((d) => d._id !== id));
+      await fetchPods();
     } catch {
       setError("Failed to delete POD");
     }
@@ -217,8 +272,17 @@ const AdminPODs = () => {
                 <Typography variant="h5" fontWeight={950} sx={{ color: palette.ink, letterSpacing: "-0.045em" }}>Pending POD approvals</Typography>
                 <Typography variant="body2" sx={{ color: palette.muted }}>Approve delivery proof before invoice preparation.</Typography>
               </Box>
-              <Chip label={`${pendingPods.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
+              <Chip label={`${pendingPagination?.total ?? pendingPods.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
             </Stack>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+              <TextField select fullWidth size="small" label="Driver" value={pendingFilterDriver} onChange={(e) => setPendingFilterDriver(e.target.value)}>
+                <MenuItem value="">All Drivers</MenuItem>
+                {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
+              </TextField>
+              <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={pendingFilterDateFrom} onChange={(e) => setPendingFilterDateFrom(e.target.value)} />
+              <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={pendingFilterDateTo} onChange={(e) => setPendingFilterDateTo(e.target.value)} />
+              <Button size="small" variant="outlined" onClick={clearPendingFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
+            </Box>
             {pendingLoading ? (
               <Box sx={{ py: 2, textAlign: "center" }}><CircularProgress size={28} /></Box>
             ) : pendingPods.length === 0 ? (
@@ -241,17 +305,38 @@ const AdminPODs = () => {
                 ))}
               </Stack>
             )}
+            <PaginationControls
+              pagination={pendingPagination}
+              onPageChange={setPendingPage}
+              onLimitChange={(newLimit) => { setPendingLimit(newLimit); setPendingPage(1); }}
+              palette={palette}
+            />
           </Stack>
         </Paper>
 
         <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-          <FormControl fullWidth>
-            <InputLabel id="driver-select-label">Select Driver</InputLabel>
-            <Select labelId="driver-select-label" value={selectedDriver} label="Select Driver" onChange={(e) => setSelectedDriver(e.target.value)}>
-              <MenuItem value=""><em>Choose a driver</em></MenuItem>
-              {drivers.map((driver) => <MenuItem key={driver._id} value={driver._id}>{driver.name} ({driver.email})</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Stack spacing={1.5}>
+            <FormControl fullWidth>
+              <InputLabel id="driver-select-label">Select Driver</InputLabel>
+              <Select labelId="driver-select-label" value={selectedDriver} label="Select Driver" onChange={(e) => setSelectedDriver(e.target.value)}>
+                <MenuItem value=""><em>Choose a driver</em></MenuItem>
+                {drivers.map((driver) => <MenuItem key={driver._id} value={driver._id}>{driver.name} ({driver.email})</MenuItem>)}
+              </Select>
+            </FormControl>
+            {selectedDriver && (
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+                <TextField select fullWidth size="small" label="Status" value={podsFilterStatus} onChange={(e) => setPodsFilterStatus(e.target.value)}>
+                  <MenuItem value="">All Statuses</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                  <MenuItem value="approved">Approved</MenuItem>
+                  <MenuItem value="rejected">Rejected</MenuItem>
+                </TextField>
+                <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={podsFilterDateFrom} onChange={(e) => setPodsFilterDateFrom(e.target.value)} />
+                <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={podsFilterDateTo} onChange={(e) => setPodsFilterDateTo(e.target.value)} />
+                <Button size="small" variant="outlined" onClick={clearPodsFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
+              </Box>
+            )}
+          </Stack>
         </Paper>
 
         {loading ? (
@@ -290,6 +375,15 @@ const AdminPODs = () => {
               </Paper>
             ))}
           </Stack>
+        )}
+
+        {selectedDriver && (
+          <PaginationControls
+            pagination={podsPagination}
+            onPageChange={setPodsPage}
+            onLimitChange={(newLimit) => { setPodsLimit(newLimit); setPodsPage(1); }}
+            palette={palette}
+          />
         )}
       </Box>
     </Box>

@@ -7,17 +7,41 @@ const JobPod = require("../models/jobPod");
 const exportToExcel = require("../utils/excelExport");
 const generateZip = require("../utils/zipGenerator");
 const logger = require("../utils/logger");
+const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
+const { buildSearchOr } = require("../utils/search");
+const { normalizeDateOnly, getMondayStartWeekRange } = require("../utils/dateRange");
 
 const ADMIN_ROLE = "admin"; // Use constants for roles
 
-// GET /api/admin/drivers
+const DRIVER_SORT_FIELDS = ["name", "createdAt", "email"];
+const DRIVER_DEFAULT_SORT = { name: 1 };
+
+// GET /api/admin/drivers — paginated, searchable, filterable
+// Query params: page, limit, sort (name|createdAt|email), search (matches
+// name), driverType, recordStatus (defaults to excluding archived).
 exports.getAllDrivers = async (req, res) => {
   try {
-    const drivers = await Driver.find({ recordStatus: { $ne: "archived" } }).select("-password");
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, DRIVER_SORT_FIELDS, DRIVER_DEFAULT_SORT);
+
+    const query = req.query.recordStatus
+      ? { recordStatus: req.query.recordStatus }
+      : { recordStatus: { $ne: "archived" } };
+
+    const searchOr = buildSearchOr(req.query.search, ["name"]);
+    if (searchOr) Object.assign(query, searchOr);
+
+    if (req.query.driverType) query.driverType = req.query.driverType;
+
+    const [drivers, total] = await Promise.all([
+      Driver.find(query).select("-password").sort(sort).skip(skip).limit(limit),
+      Driver.countDocuments(query),
+    ]);
+
     return res.status(200).json({
       status: "success",
-      count: drivers.length,
       data: drivers,
+      pagination: buildPaginationMeta({ page, limit, total }),
     });
   } catch (err) {
     logger.error("Failed to get all drivers: %o", err);
@@ -113,6 +137,68 @@ exports.getSystemStats = async (req, res) => {
   } catch (err) {
     logger.error("Failed to get system stats: %o", err);
     return res.status(500).json({ status: "error", message: "Server error fetching stats" });
+  }
+};
+
+// GET /api/admin/dashboard-stats?date=YYYY-MM-DD
+// Date-filtered aggregate stats for the admin dashboard (HomePage.jsx) —
+// replaces fetching the entire Jobs/Drivers/Trucks/WorkLogs collections
+// client-side just to compute today's/this week's counts, which silently
+// returns wrong numbers once those lists are paginated.
+// "Today" and "this week" are defined by the caller's local calendar date
+// (passed as `date`), not the server's timezone — Job/WorkLog dates are
+// stored as UTC-midnight-normalized values keyed off that same
+// YYYY-MM-DD string (see utils/dateRange.normalizeDateOnly), so passing
+// the admin's own local "today" here reproduces the same calendar day
+// they'd see client-side. Falls back to the server's current UTC date if
+// `date` is omitted or invalid.
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const today = normalizeDateOnly(req.query.date) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+    const { weekStart, weekEnd } = getMondayStartWeekRange(today);
+
+    const [jobStatusToday, totalDrivers, driverIdsWithLogToday, trucksOutOfService, weeklyLogAgg] = await Promise.all([
+      Job.aggregate([
+        { $match: { jobDate: { $gte: today, $lt: tomorrow }, recordStatus: { $ne: "archived" } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      Driver.countDocuments({ recordStatus: { $ne: "archived" } }),
+      DailyWorkLog.distinct("driverId", { date: { $gte: today, $lt: tomorrow } }),
+      Truck.countDocuments({ recordStatus: { $ne: "archived" }, status: { $in: ["out-of-service", "maintenance"] } }),
+      DailyWorkLog.aggregate([
+        { $match: { date: { $gte: weekStart, $lt: weekEnd } } },
+        { $group: { _id: null, count: { $sum: 1 }, hours: { $sum: "$hours" }, kilometers: { $sum: "$kilometers" } } },
+      ]),
+    ]);
+
+    const jobCounts = jobStatusToday.reduce((acc, { _id, count }) => {
+      acc[_id] = count;
+      return acc;
+    }, {});
+    const todaysJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
+    const weekly = weeklyLogAgg[0] || { count: 0, hours: 0, kilometers: 0 };
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        date: today.toISOString().slice(0, 10),
+        todaysJobs,
+        completedToday: jobCounts.completed || 0,
+        pendingJobs: jobCounts.pending || 0,
+        totalDrivers,
+        missingWorkLogs: Math.max(totalDrivers - driverIdsWithLogToday.length, 0),
+        trucksOutOfService,
+        weeklyLogs: weekly.count || 0,
+        weeklyHours: weekly.hours || 0,
+        weeklyKilometres: weekly.kilometers || 0,
+      },
+    });
+  } catch (err) {
+    logger.error("Failed to get dashboard stats: %o", err);
+    return res.status(500).json({ status: "error", message: "Server error fetching dashboard stats" });
   }
 };
 

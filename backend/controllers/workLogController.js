@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 const DailyWorkLog = require("../models/dailyWorkLog");
 const Job = require("../models/job");
 const logger = require("../utils/logger");
+const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
+const { buildDateRangeFilter, normalizeDateOnly: normalizeQueryDate, getMondayStartWeekRange } = require("../utils/dateRange");
+
+const WORKLOG_SORT_FIELDS = ["workDate", "date", "createdAt"];
+const WORKLOG_DEFAULT_SORT = { workDate: -1, date: -1 };
 
 const normalizeDateOnly = (value) => {
   if (!value) return null;
@@ -439,10 +444,16 @@ exports.rejectWorkLog = async (req, res) => {
  * @route GET /api/worklogs/admin/:driverId?
  * @access Admin only
  */
+// Query params: page, limit, sort (workDate|date|createdAt), status,
+// dateFrom/dateTo (workDate range). driverId comes from the URL param
+// (GET /worklogs/admin/:driverId) when present.
 exports.getAllLogsForAdmin = async (req, res) => {
   const { driverId } = req.params;
 
   try {
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, WORKLOG_SORT_FIELDS, WORKLOG_DEFAULT_SORT);
+
     let query = {};
     if (driverId) {
       if (!mongoose.Types.ObjectId.isValid(driverId)) {
@@ -451,29 +462,112 @@ exports.getAllLogsForAdmin = async (req, res) => {
       query.driverId = driverId;
     }
 
-    // Populate driver details and job details for admin view
-    const logs = await DailyWorkLog.find(query)
-      .populate("driverId", "name email")  // adjust fields as per your driver model
-      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
-      .sort({ workDate: -1, date: -1 });
+    if (req.query.status) query.status = req.query.status;
 
-    return res.status(200).json({ success: true, data: logs });
+    const dateFilter = buildDateRangeFilter("workDate", { from: req.query.dateFrom, to: req.query.dateTo });
+    if (dateFilter) Object.assign(query, dateFilter);
+
+    // Populate driver details and job details for admin view
+    const [logs, total] = await Promise.all([
+      DailyWorkLog.find(query)
+        .populate("driverId", "name email")  // adjust fields as per your driver model
+        .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      DailyWorkLog.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    });
   } catch (err) {
     logger.error("Admin get all logs error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
+// Query params: page, limit, sort (workDate|date|createdAt), driverId,
+// dateFrom/dateTo (workDate range).
 exports.getPendingLogsForAdmin = async (req, res) => {
   try {
-    const logs = await DailyWorkLog.find({ status: "pending" })
-      .populate("driverId", "name email")
-      .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
-      .sort({ workDate: -1, date: -1 });
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, WORKLOG_SORT_FIELDS, WORKLOG_DEFAULT_SORT);
 
-    return res.status(200).json({ success: true, data: logs });
+    const query = { status: "pending" };
+    if (req.query.driverId && mongoose.Types.ObjectId.isValid(req.query.driverId)) {
+      query.driverId = req.query.driverId;
+    }
+    const dateFilter = buildDateRangeFilter("workDate", { from: req.query.dateFrom, to: req.query.dateTo });
+    if (dateFilter) Object.assign(query, dateFilter);
+
+    const [logs, total] = await Promise.all([
+      DailyWorkLog.find(query)
+        .populate("driverId", "name email")
+        .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      DailyWorkLog.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    });
   } catch (err) {
     logger.error("Admin get pending logs error: %o", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// GET /api/worklogs/admin/weekly-stats
+// Query params: date (YYYY-MM-DD, defaults to the server's current date),
+// driverId (optional — scopes the aggregate to one driver, matching
+// whatever the admin currently has the Work Logs list filtered to).
+// Computed via server-side aggregation over the full week's logs rather
+// than whatever page happens to be loaded client-side, using the same
+// Monday-start week boundary as the dashboard-stats endpoint (see
+// utils/dateRange.getMondayStartWeekRange) so both stay in sync.
+exports.getWeeklyStatsForAdmin = async (req, res) => {
+  try {
+    const today = normalizeQueryDate(req.query.date) || normalizeQueryDate(new Date().toISOString().slice(0, 10));
+    const { weekStart, weekEnd } = getMondayStartWeekRange(today);
+
+    const match = { date: { $gte: weekStart, $lt: weekEnd } };
+    if (req.query.driverId && mongoose.Types.ObjectId.isValid(req.query.driverId)) {
+      match.driverId = new mongoose.Types.ObjectId(req.query.driverId);
+    }
+
+    const agg = await DailyWorkLog.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          hours: { $sum: "$hours" },
+          kilometers: { $sum: "$kilometers" },
+          deliveries: { $sum: "$deliveriesDone" },
+        },
+      },
+    ]);
+
+    const weekly = agg[0] || { count: 0, hours: 0, kilometers: 0, deliveries: 0 };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        weeklyLogs: weekly.count || 0,
+        weeklyHours: weekly.hours || 0,
+        weeklyKilometres: weekly.kilometers || 0,
+        weeklyDeliveries: weekly.deliveries || 0,
+      },
+    });
+  } catch (err) {
+    logger.error("Admin get weekly work log stats error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };

@@ -25,6 +25,7 @@ router.put("/drivers/:driverId", authMiddleware, requireAdmin, driverUpdateValid
 router.delete("/drivers/:driverId", authMiddleware, requireAdmin, adminController.deleteDriver);
 router.get("/export-drivers", authMiddleware, requireAdmin, adminController.exportDriversExcel);
 router.get("/stats", authMiddleware, requireAdmin, adminController.getSystemStats);
+router.get("/dashboard-stats", authMiddleware, requireAdmin, adminController.getDashboardStats);
 router.get("/download-all-pods", authMiddleware, requireAdmin, adminController.downloadAllPods);
 
 /* ==========================================================

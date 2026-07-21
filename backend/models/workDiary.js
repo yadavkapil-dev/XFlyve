@@ -71,4 +71,7 @@ const workDiarySchema = new mongoose.Schema(
 // Driver work diary history (listWorkDiariesByDriver, hit on every driver/admin work diary view): WorkDiary.find({ driverId })
 workDiarySchema.index({ driverId: 1 });
 
+// Phase 4: pending-approvals queue (listPendingWorkDiaryApprovals) — WorkDiary.find({ status }).sort({ createdAt })
+workDiarySchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model("WorkDiary", workDiarySchema);

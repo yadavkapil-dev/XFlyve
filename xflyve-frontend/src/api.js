@@ -40,7 +40,8 @@ export const signup = (userData) => api.post("/auth/signup", userData);
 export const getProfile = () => api.get("/auth/profile"); // Requires authMiddleware in backend
 
 // ===== ADMIN ROUTES =====
-export const getAllDrivers = () => api.get("/admin/drivers");
+// params: { page, limit, sort, search, driverType, recordStatus }
+export const getAllDrivers = (params) => api.get("/admin/drivers", { params });
 export const createDriver = (driverData) => api.post("/admin/drivers", driverData);
 export const updateDriver = (driverId, driverData) => api.put(`/admin/drivers/${driverId}`, driverData);
 export const deleteDriver = (driverId) => api.delete(`/admin/drivers/${driverId}`);
@@ -50,19 +51,26 @@ export const exportDriversExcel = () =>
 
 export const getSystemStats = () => api.get("/admin/stats");
 
+// Date-filtered aggregate stats for the admin dashboard (today's/this
+// week's numbers). date: "YYYY-MM-DD" in the caller's local timezone —
+// defaults to the server's UTC date if omitted.
+export const getDashboardStats = (date) => api.get("/admin/dashboard-stats", { params: { date } });
+
 export const downloadAllPods = () =>
   api.get("/admin/download-all-pods", { responseType: "blob" });
 
 // Trucks
-export const getAllTrucks = () => api.get("/admin/trucks");
+// params: { page, limit, sort, search, status, recordStatus }
+export const getAllTrucks = (params) => api.get("/admin/trucks", { params });
 export const createTruck = (truckData) => api.post("/admin/trucks", truckData);
 export const updateTruck = (truckId, truckData) => api.put(`/admin/trucks/${truckId}`, truckData);
 export const deleteTruck = (truckId) => api.delete(`/admin/trucks/${truckId}`);
 
 // Jobs
-export const getAllJobs = () => api.get("/jobs"); // Admin: get all jobs
+// params: { page, limit, sort, search, status, jobType, assignedTo, assignedTruck, dateFrom, dateTo }
+export const getAllJobs = (params) => api.get("/jobs", { params }); // Admin: get all jobs
 export const getJobsByDriver = (driverId) => api.get(`/jobs/assigned/${driverId}`); // Driver/Admin: get jobs assigned to driver
-// Removed invalid route: export const getMyJobs = () => api.get("/jobs/driver"); 
+// Removed invalid route: export const getMyJobs = () => api.get("/jobs/driver");
 export const createJob = (jobData) => api.post("/jobs/create", jobData); // Admin: create job
 export const updateJob = (jobId, jobData) => api.put(`/jobs/${jobId}`, jobData); // Admin: update job
 export const deleteJob = (jobId) => api.delete(`/jobs/${jobId}`); // Admin: delete job
@@ -96,12 +104,18 @@ export const getWorkLogsByDriver = (driverId) => api.get(`/worklogs/${driverId}`
 export const getWorkLogsByCurrentDriver = () => api.get("/worklogs/me");
 
 // ===== WORK LOGS (Admin) =====
-export const getAllWorkLogsAdmin = () => api.get("/worklogs/admin");
-export const getWorkLogsByDriverAdmin = (driverId) =>
-  api.get(`/worklogs/admin/${driverId}`);
-export const getPendingWorkLogsAdmin = () => api.get("/worklogs/admin/pending");
+// params: { page, limit, sort, status, dateFrom, dateTo }
+export const getAllWorkLogsAdmin = (params) => api.get("/worklogs/admin", { params });
+export const getWorkLogsByDriverAdmin = (driverId, params) =>
+  api.get(`/worklogs/admin/${driverId}`, { params });
+// params: { page, limit, sort, driverId, dateFrom, dateTo }
+export const getPendingWorkLogsAdmin = (params) => api.get("/worklogs/admin/pending", { params });
 export const approveWorkLogAdmin = (logId) => api.put(`/worklogs/admin/${logId}/approve`);
 export const rejectWorkLogAdmin = (logId, payload) => api.put(`/worklogs/admin/${logId}/reject`, payload);
+
+// Server-side weekly aggregate (logs/hours/km/deliveries), independent of the
+// admin list's current pagination. params: { date, driverId }
+export const getWeeklyWorkLogStatsAdmin = (params) => api.get("/worklogs/admin/weekly-stats", { params });
 
 // ===== WORK DIARY =====
 export const uploadWorkDiary = async (formData) => {
@@ -116,9 +130,12 @@ export const getWorkDiary = async (workDiaryId) => {
   return res.data; // blob, keep as-is
 };
 
-export const listWorkDiariesByDriver = async (driverId) => {
-  const res = await api.get(`/workDiaries/driver/${driverId}`);
-  return res.data.data || []; // always return array
+// params: { page, limit, sort, status, dateFrom, dateTo, includeOlder }
+// Returns { data, pagination } — callers that only need the array can
+// destructure `.data` at the call site.
+export const listWorkDiariesByDriver = async (driverId, params) => {
+  const res = await api.get(`/workDiaries/driver/${driverId}`, { params });
+  return { data: res.data.data || [], pagination: res.data.pagination };
 };
 
 export const deleteWorkDiary = async (workDiaryId) => {
@@ -133,9 +150,10 @@ export const updateWorkDiaryNotes = async (workDiaryId, payload) => {
   return res.data.data; // return the updated work diary object
 };
 
-export const listPendingWorkDiaries = async () => {
-  const res = await api.get("/workdiaries/admin/pending");
-  return res.data.data || [];
+// params: { page, limit, sort, driverId, dateFrom, dateTo }
+export const listPendingWorkDiaries = async (params) => {
+  const res = await api.get("/workdiaries/admin/pending", { params });
+  return { data: res.data.data || [], pagination: res.data.pagination };
 };
 
 export const approveWorkDiary = async (workDiaryId) => {
@@ -157,10 +175,11 @@ export const uploadPod = async (formData) => {
   return data.data; // return saved POD object
 };
 
-// List PODs by driver
-export const listPodsByDriver = async (driverId) => {
-  const { data } = await api.get(`/jobpods/driver/${driverId}`);
-  return data.data || [];
+// List PODs by driver — params: { page, limit, sort, status, dateFrom,
+// dateTo, includeOlder }. Returns { data, pagination }.
+export const listPodsByDriver = async (driverId, params) => {
+  const { data } = await api.get(`/jobpods/driver/${driverId}`, { params });
+  return { data: data.data || [], pagination: data.pagination };
 };
 
 // Get POD by ID (for download) — returns Blob
@@ -182,9 +201,10 @@ export const deletePod = async (podId) => {
   return data.data;
 };
 
-export const listPendingPods = async () => {
-  const { data } = await api.get("/jobpods/admin/pending");
-  return data.data || [];
+// params: { page, limit, sort, driverId, dateFrom, dateTo }
+export const listPendingPods = async (params) => {
+  const { data } = await api.get("/jobpods/admin/pending", { params });
+  return { data: data.data || [], pagination: data.pagination };
 };
 
 export const approvePod = async (podId) => {

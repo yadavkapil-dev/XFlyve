@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -11,6 +11,7 @@ import {
   Paper,
   Select,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -20,6 +21,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import DownloadIcon from "@mui/icons-material/Download";
 import { getAllDrivers, listWorkDiariesByDriver, deleteWorkDiary, getWorkDiary, listPendingWorkDiaries, approveWorkDiary, rejectWorkDiary } from "../../api";
+import PaginationControls from "../../components/PaginationControls";
 
 const palette = {
   ink: "#0b1220",
@@ -36,28 +38,52 @@ const WorkDiary = () => {
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState("");
   const [diaries, setDiaries] = useState([]);
+  const [diariesPagination, setDiariesPagination] = useState(null);
+  const [diariesPage, setDiariesPage] = useState(1);
+  const [diariesLimit, setDiariesLimit] = useState(20);
+  const [diariesFilterStatus, setDiariesFilterStatus] = useState("");
+  const [diariesFilterDateFrom, setDiariesFilterDateFrom] = useState("");
+  const [diariesFilterDateTo, setDiariesFilterDateTo] = useState("");
+
   const [pendingDiaries, setPendingDiaries] = useState([]);
+  const [pendingPagination, setPendingPagination] = useState(null);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [pendingLimit, setPendingLimit] = useState(20);
+  const [pendingFilterDriver, setPendingFilterDriver] = useState("");
+  const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState("");
+  const [pendingFilterDateTo, setPendingFilterDateTo] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [actionId, setActionId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const fetchPendingDiaries = async () => {
+  useEffect(() => {
+    setPendingPage(1);
+  }, [pendingFilterDriver, pendingFilterDateFrom, pendingFilterDateTo]);
+
+  const fetchPendingDiaries = useCallback(async () => {
     setPendingLoading(true);
     try {
-      setPendingDiaries(await listPendingWorkDiaries());
+      const params = { page: pendingPage, limit: pendingLimit };
+      if (pendingFilterDriver) params.driverId = pendingFilterDriver;
+      if (pendingFilterDateFrom) params.dateFrom = pendingFilterDateFrom;
+      if (pendingFilterDateTo) params.dateTo = pendingFilterDateTo;
+      const res = await listPendingWorkDiaries(params);
+      setPendingDiaries(res.data);
+      setPendingPagination(res.pagination || null);
     } catch (err) {
       setError(err.response?.data?.message || "Server error loading pending compliance approvals");
     } finally {
       setPendingLoading(false);
     }
-  };
+  }, [pendingPage, pendingLimit, pendingFilterDriver, pendingFilterDateFrom, pendingFilterDateTo]);
 
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
-        const res = await getAllDrivers();
+        const res = await getAllDrivers({ limit: 100 });
         if (res.data.status === "success") setDrivers(res.data.data || []);
         else setError("Failed to load drivers");
       } catch (err) {
@@ -65,28 +91,43 @@ const WorkDiary = () => {
       }
     };
     fetchDrivers();
-    fetchPendingDiaries();
   }, []);
 
   useEffect(() => {
+    fetchPendingDiaries();
+  }, [fetchPendingDiaries]);
+
+  useEffect(() => {
+    setDiariesPage(1);
+  }, [selectedDriver, diariesFilterStatus, diariesFilterDateFrom, diariesFilterDateTo]);
+
+  const fetchDiaries = useCallback(async () => {
     setError("");
     setSuccess("");
     if (!selectedDriver) {
       setDiaries([]);
+      setDiariesPagination(null);
       return;
     }
-    const fetchDiaries = async () => {
-      setLoading(true);
-      try {
-        setDiaries(await listWorkDiariesByDriver(selectedDriver));
-      } catch (err) {
-        setError(err.response?.data?.message || "Server error fetching diaries");
-      } finally {
-        setLoading(false);
-      }
-    };
+    setLoading(true);
+    try {
+      const params = { page: diariesPage, limit: diariesLimit };
+      if (diariesFilterStatus) params.status = diariesFilterStatus;
+      if (diariesFilterDateFrom) params.dateFrom = diariesFilterDateFrom;
+      if (diariesFilterDateTo) params.dateTo = diariesFilterDateTo;
+      const res = await listWorkDiariesByDriver(selectedDriver, params);
+      setDiaries(res.data);
+      setDiariesPagination(res.pagination || null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Server error fetching diaries");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDriver, diariesPage, diariesLimit, diariesFilterStatus, diariesFilterDateFrom, diariesFilterDateTo]);
+
+  useEffect(() => {
     fetchDiaries();
-  }, [selectedDriver]);
+  }, [fetchDiaries]);
 
   const driverName = (driver) => {
     if (driver?.name) return driver.name;
@@ -98,9 +139,21 @@ const WorkDiary = () => {
     return <Chip label={status} sx={{ color, bgcolor: alpha(color, 0.1), fontWeight: 900, textTransform: "capitalize" }} />;
   };
 
+  const clearDiariesFilters = () => {
+    setDiariesFilterStatus("");
+    setDiariesFilterDateFrom("");
+    setDiariesFilterDateTo("");
+  };
+
+  const clearPendingFilters = () => {
+    setPendingFilterDriver("");
+    setPendingFilterDateFrom("");
+    setPendingFilterDateTo("");
+  };
+
   const refreshDiaries = async () => {
     await fetchPendingDiaries();
-    if (selectedDriver) setDiaries(await listWorkDiariesByDriver(selectedDriver));
+    await fetchDiaries();
   };
 
   const handleApprove = async (diaryId) => {
@@ -140,7 +193,7 @@ const WorkDiary = () => {
     try {
       await deleteWorkDiary(id);
       setSuccess("Compliance document deleted.");
-      setDiaries((prev) => prev.filter((d) => d._id !== id));
+      await fetchDiaries();
     } catch {
       setError("Failed to delete work diary");
     }
@@ -182,8 +235,17 @@ const WorkDiary = () => {
                 <Typography variant="h5" fontWeight={950} sx={{ color: palette.ink, letterSpacing: "-0.045em" }}>Pending compliance approvals</Typography>
                 <Typography variant="body2" sx={{ color: palette.muted }}>Review work diary documents before closing weekly records.</Typography>
               </Box>
-              <Chip label={`${pendingDiaries.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
+              <Chip label={`${pendingPagination?.total ?? pendingDiaries.length} pending`} sx={{ alignSelf: { xs: "flex-start", sm: "center" }, color: palette.teal, bgcolor: alpha(palette.teal, 0.1), fontWeight: 900 }} />
             </Stack>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+              <TextField select fullWidth size="small" label="Driver" value={pendingFilterDriver} onChange={(e) => setPendingFilterDriver(e.target.value)}>
+                <MenuItem value="">All Drivers</MenuItem>
+                {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
+              </TextField>
+              <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={pendingFilterDateFrom} onChange={(e) => setPendingFilterDateFrom(e.target.value)} />
+              <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={pendingFilterDateTo} onChange={(e) => setPendingFilterDateTo(e.target.value)} />
+              <Button size="small" variant="outlined" onClick={clearPendingFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
+            </Box>
             {pendingLoading ? (
               <Box sx={{ py: 2, textAlign: "center" }}><CircularProgress size={28} /></Box>
             ) : pendingDiaries.length === 0 ? (
@@ -206,17 +268,38 @@ const WorkDiary = () => {
                 ))}
               </Stack>
             )}
+            <PaginationControls
+              pagination={pendingPagination}
+              onPageChange={setPendingPage}
+              onLimitChange={(newLimit) => { setPendingLimit(newLimit); setPendingPage(1); }}
+              palette={palette}
+            />
           </Stack>
         </Paper>
 
         <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-          <FormControl fullWidth>
-            <InputLabel id="driver-select-label">Select Driver</InputLabel>
-            <Select labelId="driver-select-label" value={selectedDriver} label="Select Driver" onChange={(e) => setSelectedDriver(e.target.value)}>
-              <MenuItem value=""><em>Choose a driver</em></MenuItem>
-              {drivers.map((driver) => <MenuItem key={driver._id} value={driver._id}>{driver.name} ({driver.email})</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Stack spacing={1.5}>
+            <FormControl fullWidth>
+              <InputLabel id="driver-select-label">Select Driver</InputLabel>
+              <Select labelId="driver-select-label" value={selectedDriver} label="Select Driver" onChange={(e) => setSelectedDriver(e.target.value)}>
+                <MenuItem value=""><em>Choose a driver</em></MenuItem>
+                {drivers.map((driver) => <MenuItem key={driver._id} value={driver._id}>{driver.name} ({driver.email})</MenuItem>)}
+              </Select>
+            </FormControl>
+            {selectedDriver && (
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
+                <TextField select fullWidth size="small" label="Status" value={diariesFilterStatus} onChange={(e) => setDiariesFilterStatus(e.target.value)}>
+                  <MenuItem value="">All Statuses</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                  <MenuItem value="approved">Approved</MenuItem>
+                  <MenuItem value="rejected">Rejected</MenuItem>
+                </TextField>
+                <TextField fullWidth size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={diariesFilterDateFrom} onChange={(e) => setDiariesFilterDateFrom(e.target.value)} />
+                <TextField fullWidth size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={diariesFilterDateTo} onChange={(e) => setDiariesFilterDateTo(e.target.value)} />
+                <Button size="small" variant="outlined" onClick={clearDiariesFilters} sx={{ borderRadius: 3, fontWeight: 850 }}>Clear</Button>
+              </Box>
+            )}
+          </Stack>
         </Paper>
 
         {loading ? (
@@ -255,6 +338,15 @@ const WorkDiary = () => {
               </Paper>
             ))}
           </Stack>
+        )}
+
+        {selectedDriver && (
+          <PaginationControls
+            pagination={diariesPagination}
+            onPageChange={setDiariesPage}
+            onLimitChange={(newLimit) => { setDiariesLimit(newLimit); setDiariesPage(1); }}
+            palette={palette}
+          />
         )}
       </Box>
     </Box>

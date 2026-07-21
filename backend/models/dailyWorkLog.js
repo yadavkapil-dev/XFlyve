@@ -99,6 +99,9 @@ const dailyWorkLogSchema = new mongoose.Schema(
 // Driver's own work log history (getLogsByDriver/getMyLogs, admin per-driver filter): DailyWorkLog.find({ driverId })
 dailyWorkLogSchema.index({ driverId: 1 });
 
+// Phase 4: pending-approvals queue (getPendingLogsForAdmin) — DailyWorkLog.find({ status }).sort({ workDate })
+dailyWorkLogSchema.index({ status: 1, workDate: -1 });
+
 dailyWorkLogSchema.pre("validate", function (next) {
   if (!this.workDate && this.date) {
     this.workDate = this.date;

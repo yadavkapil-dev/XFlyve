@@ -3,22 +3,55 @@ const Truck = require("../models/truck");
 const Job = require("../models/job");
 const TruckAssignment = require("../models/dailyTruckAssignment");
 const logger = require("../utils/logger");
+const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
+const { buildSearchOr } = require("../utils/search");
+
+const TRUCK_SORT_FIELDS = ["truckNumber", "createdAt", "capacity"];
+const TRUCK_DEFAULT_SORT = { truckNumber: 1 };
 
 /**
- * @desc Get all trucks
+ * @desc Get all trucks — paginated, searchable, filterable
  * @route GET /api/trucks
  * @access Admin only (or configurable)
+ * Query params: page, limit, sort (truckNumber|createdAt|capacity), search
+ * (matches truckNumber), status, recordStatus (defaults to excluding archived).
  */
 exports.getAllTrucks = async (req, res) => {
   try {
-    const trucks = await Truck.find({ recordStatus: { $ne: "archived" } })
-      .populate("assignedDriver", "name email")
-      .lean();
+    const { page, limit, skip } = parsePagination(req.query);
+    const sort = parseSort(req.query.sort, TRUCK_SORT_FIELDS, TRUCK_DEFAULT_SORT);
+
+    const query = req.query.recordStatus
+      ? { recordStatus: req.query.recordStatus }
+      : { recordStatus: { $ne: "archived" } };
+
+    const searchOr = buildSearchOr(req.query.search, ["truckNumber"]);
+    if (searchOr) Object.assign(query, searchOr);
+
+    if (req.query.status) query.status = req.query.status;
+
+    // Fleet-wide out-of-service count for the admin UI's alert banner —
+    // deliberately independent of the current page/search/status filters
+    // (it's a "how many of the whole fleet need attention" figure, not a
+    // "how many on this page" figure), so it stays correct once the list
+    // itself becomes paginated.
+    const [trucks, total, outOfServiceCount] = await Promise.all([
+      Truck.find(query)
+        .populate("assignedDriver", "name email")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Truck.countDocuments(query),
+      Truck.countDocuments({ recordStatus: { $ne: "archived" }, status: { $in: ["out-of-service", "maintenance"] } }),
+    ]);
 
     return res.status(200).json({
       success: true,
       message: "All trucks fetched",
       data: trucks,
+      pagination: buildPaginationMeta({ page, limit, total }),
+      outOfServiceCount,
     });
   } catch (err) {
     logger.error("Get all trucks error: %o", err);

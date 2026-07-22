@@ -7,6 +7,7 @@ const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter } = require("../utils/dateRange");
+const { notifyUser, notifyAdmins } = require("../services/notificationService");
 
 const DIARY_HISTORY_DAYS = 30;
 const DIARY_SORT_FIELDS = ["uploadDate", "createdAt", "workDate"];
@@ -134,6 +135,14 @@ exports.uploadWorkDiary = async (req, res) => {
         { $addToSet: { diaryIds: newDiary._id } }
       );
     }
+
+    await notifyAdmins({
+      type: "diary_submitted",
+      title: "Work diary submitted",
+      message: "A driver submitted a new work diary for review.",
+      resourceType: "workdiary",
+      resourceId: newDiary._id,
+    });
 
     return res.status(201).json({ success: true, message: "Work diary uploaded", data: newDiary });
   } catch (err) {
@@ -349,6 +358,15 @@ exports.approveWorkDiary = async (req, res) => {
 
     await workDiary.save();
 
+    await notifyUser({
+      recipient: workDiary.driverId,
+      type: "diary_approved",
+      title: "Work diary approved",
+      message: "Your work diary has been approved.",
+      resourceType: "workdiary",
+      resourceId: workDiary._id,
+    });
+
     return res.status(200).json({ success: true, message: "Work diary approved", data: workDiary });
   } catch (err) {
     logger.error("Approve work diary error: %o", err);
@@ -376,6 +394,17 @@ exports.rejectWorkDiary = async (req, res) => {
     workDiary.approvedAt = null;
 
     await workDiary.save();
+
+    await notifyUser({
+      recipient: workDiary.driverId,
+      type: "diary_rejected",
+      title: "Work diary rejected",
+      message: rejectionReason
+        ? `Your work diary was rejected: ${rejectionReason}`
+        : "Your work diary was rejected.",
+      resourceType: "workdiary",
+      resourceId: workDiary._id,
+    });
 
     return res.status(200).json({ success: true, message: "Work diary rejected", data: workDiary });
   } catch (err) {

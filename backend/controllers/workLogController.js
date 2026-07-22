@@ -4,6 +4,7 @@ const Job = require("../models/job");
 const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter, normalizeDateOnly: normalizeQueryDate, getMondayStartWeekRange } = require("../utils/dateRange");
+const { notifyUser, notifyAdmins } = require("../services/notificationService");
 
 const WORKLOG_SORT_FIELDS = ["workDate", "date", "createdAt"];
 const WORKLOG_DEFAULT_SORT = { workDate: -1, date: -1 };
@@ -155,6 +156,14 @@ exports.createWorkLog = async (req, res) => {
     });
 
     await newLog.save();
+
+    await notifyAdmins({
+      type: "worklog_submitted",
+      title: "Work log submitted",
+      message: "A driver submitted a new daily work log for review.",
+      resourceType: "worklog",
+      resourceId: newLog._id,
+    });
 
     return res.status(201).json({
       success: true,
@@ -403,6 +412,15 @@ exports.approveWorkLog = async (req, res) => {
 
     await log.save();
 
+    await notifyUser({
+      recipient: log.driverId,
+      type: "worklog_approved",
+      title: "Work log approved",
+      message: "Your daily work log has been approved.",
+      resourceType: "worklog",
+      resourceId: log._id,
+    });
+
     return res.status(200).json({ success: true, message: "Daily record approved", data: log });
   } catch (err) {
     logger.error("Approve WorkLog error: %o", err);
@@ -430,6 +448,17 @@ exports.rejectWorkLog = async (req, res) => {
     log.approvedAt = null;
 
     await log.save();
+
+    await notifyUser({
+      recipient: log.driverId,
+      type: "worklog_rejected",
+      title: "Work log rejected",
+      message: rejectionReason
+        ? `Your daily work log was rejected: ${rejectionReason}`
+        : "Your daily work log was rejected.",
+      resourceType: "worklog",
+      resourceId: log._id,
+    });
 
     return res.status(200).json({ success: true, message: "Daily record rejected", data: log });
   } catch (err) {

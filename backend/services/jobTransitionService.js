@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Job = require("../models/job");
 const Truck = require("../models/truck");
 const { supportsTransactions } = require("../utils/dbCapabilities");
+const { notifyAdmins } = require("./notificationService");
 
 /**
  * Domain-rule error for job/truck transitions. Controllers translate this
@@ -94,7 +95,7 @@ const startJob = async (job) => {
     throw new JobTransitionError("This truck is already on an in-progress job", 409);
   }
 
-  return withOptionalTransaction(async (session) => {
+  const result = await withOptionalTransaction(async (session) => {
     const claimedTruck = await Truck.findOneAndUpdate(
       { _id: truck._id, status: "available", recordStatus: { $ne: "archived" } },
       { status: "on-route", assignedJob: job._id },
@@ -118,6 +119,19 @@ const startJob = async (job) => {
 
     return job;
   });
+
+  // Centralized here (not in each controller that calls startJob) so every
+  // caller — the driver-facing updateJob transition and any future one —
+  // gets this notification for free.
+  await notifyAdmins({
+    type: "job_started",
+    title: "Job started",
+    message: `${job.title || "A job"} has been started.`,
+    resourceType: "job",
+    resourceId: job._id,
+  });
+
+  return result;
 };
 
 /**
@@ -146,7 +160,17 @@ const completeJob = async (job) => {
     }
   });
 
-  return Job.findById(job._id).populate("assignedTruck", "truckNumber").lean();
+  const result = await Job.findById(job._id).populate("assignedTruck", "truckNumber").lean();
+
+  await notifyAdmins({
+    type: "job_completed",
+    title: "Job completed",
+    message: `${job.title || "A job"} has been completed.`,
+    resourceType: "job",
+    resourceId: job._id,
+  });
+
+  return result;
 };
 
 /**

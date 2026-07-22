@@ -13,6 +13,7 @@ const {
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildSearchOr } = require("../utils/search");
 const { buildDateRangeFilter } = require("../utils/dateRange");
+const { notifyUser } = require("../services/notificationService");
 
 const JOB_SORT_FIELDS = ["jobDate", "createdAt", "status", "title"];
 const JOB_DEFAULT_SORT = { jobDate: 1 };
@@ -154,6 +155,15 @@ exports.createJob = async (req, res) => {
       jobDate: normalizedJobDate,
       jobType,
       status: "pending",
+    });
+
+    await notifyUser({
+      recipient: newJob.assignedTo,
+      type: "job_assigned",
+      title: "New job assigned",
+      message: `You have been assigned a new job: ${newJob.title}`,
+      resourceType: "job",
+      resourceId: newJob._id,
     });
 
     res.status(201).json({ status: "success", data: newJob });
@@ -351,6 +361,8 @@ exports.updateJob = async (req, res) => {
       return res.status(404).json({ status: "fail", message: "Job not found" });
     }
 
+    const previousAssignedTo = job.assignedTo.toString();
+
     if (user.role === "driver") {
       // Driver can only update status of own jobs
       if (job.assignedTo.toString() !== user.id) {
@@ -473,6 +485,29 @@ exports.updateJob = async (req, res) => {
     job.status = status !== undefined ? status : job.status;
 
     await job.save();
+
+    // Reassigning to a different driver reads as "new job assigned" to them;
+    // any other admin edit to the same driver's job reads as an update.
+    const nextAssignedTo = job.assignedTo.toString();
+    if (nextAssignedTo !== previousAssignedTo) {
+      await notifyUser({
+        recipient: job.assignedTo,
+        type: "job_assigned",
+        title: "New job assigned",
+        message: `You have been assigned a new job: ${job.title}`,
+        resourceType: "job",
+        resourceId: job._id,
+      });
+    } else {
+      await notifyUser({
+        recipient: job.assignedTo,
+        type: "job_updated",
+        title: "Job updated",
+        message: `Your job "${job.title}" has been updated.`,
+        resourceType: "job",
+        resourceId: job._id,
+      });
+    }
 
     const updatedJob = await Job.findById(jobId)
       .populate("assignedTo", "name email driverType")

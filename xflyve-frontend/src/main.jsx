@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "./contexts/AuthContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
 import { CssBaseline, ThemeProvider } from "@mui/material";
 import theme from "../theme";
 import { initSentry } from "./sentry";
@@ -14,9 +15,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <NotificationProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </NotificationProvider>
       </AuthProvider>
     </ThemeProvider>
   </React.StrictMode>

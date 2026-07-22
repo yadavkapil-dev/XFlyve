@@ -1,4 +1,5 @@
 require("dotenv").config();
+const http = require("http");
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -12,6 +13,7 @@ const validateEnv = require("./config/validateEnv");
 const { Sentry, isSentryEnabled } = require("./config/sentry");
 const requestId = require("./middlewares/requestId");
 const errorHandler = require("./middlewares/errorHandler");
+const { initSocket, getIO } = require("./sockets/socketServer");
 
 // Fail fast with a clear, safe (non-secret) message if required config is missing.
 validateEnv(logger);
@@ -25,6 +27,7 @@ const truckAssignRoutes = require("./routes/truckAssignRoutes");
 const jobPodRoutes = require("./routes/jobPodRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const workDiaryRoutes = require("./routes/workDiaryRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 app.disable("x-powered-by");
@@ -109,6 +112,7 @@ app.use("/api/admin/truck-assignments", truckAssignRoutes);
 app.use("/api/jobpods", jobPodRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/workdiaries", workDiaryRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.json({
@@ -136,26 +140,52 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 3001;
 let serverInstance;
 
+// Socket.IO needs the underlying http.Server (not just the Express app) so
+// it can upgrade connections on the same port as the REST API.
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
 connectDB()
   .then(() => {
     logger.info(`MongoDB connected`);
     logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || "development"} mode`);
-    serverInstance = app.listen(PORT);
+    serverInstance = httpServer.listen(PORT);
   })
   .catch(err => {
     logger.error("MongoDB connection failed: %o", err.message);
     process.exit(1);
   });
 
-// Graceful shutdown
+// Graceful shutdown — a single handler that closes the Socket.IO server
+// (which in turn closes the underlying HTTP server it was attached to),
+// then the MongoDB connection, then exits. Guarded with `isShuttingDown` so
+// that if SIGINT is delivered more than once (e.g. once from the terminal's
+// process-group signal and again via a wrapper like npm/nodemon forwarding
+// it to this child process), the log line and teardown only ever run once
+// instead of repeating mid-shutdown.
+let isShuttingDown = false;
+
 process.on("SIGINT", () => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
   logger.info("SIGINT received, closing server...");
-  if (serverInstance) {
-    serverInstance.close(() => {
-      logger.info("Server closed");
-      process.exit(0);
-    });
-  } else {
+
+  (async () => {
+    const io = getIO();
+    if (io) {
+      await io.close().catch((err) => logger.error("Error closing Socket.IO server: %o", err));
+    } else if (serverInstance) {
+      await new Promise((resolve) => serverInstance.close(resolve));
+    }
+
+    try {
+      await mongoose.connection.close();
+    } catch (err) {
+      logger.error("Error closing MongoDB connection: %o", err);
+    }
+
+    logger.info("Server closed");
     process.exit(0);
-  }
+  })();
 });

@@ -77,16 +77,23 @@ const loadJobController = () => {
     updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
   };
 
+  const notificationService = {
+    notifyUser: jest.fn().mockResolvedValue(null),
+    notifyAdmins: jest.fn().mockResolvedValue(null),
+  };
+
   jest.doMock("../models/job", () => Job);
   jest.doMock("../models/driver", () => Driver);
   jest.doMock("../models/truck", () => Truck);
   jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
+  jest.doMock("../services/notificationService", () => notificationService);
 
   return {
     controller: require("../controllers/jobController"),
     Job,
     Driver,
     Truck,
+    notificationService,
   };
 };
 

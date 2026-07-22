@@ -23,14 +23,21 @@ const loadController = () => {
     findOne: jest.fn(),
   };
 
+  const notificationService = {
+    notifyUser: jest.fn().mockResolvedValue(null),
+    notifyAdmins: jest.fn().mockResolvedValue(null),
+  };
+
   jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
   jest.doMock("../models/job", () => Job);
   jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
+  jest.doMock("../services/notificationService", () => notificationService);
 
   return {
     controller: require("../controllers/workLogController"),
     DailyWorkLog,
     Job,
+    notificationService,
   };
 };
 

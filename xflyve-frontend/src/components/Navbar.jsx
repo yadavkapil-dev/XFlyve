@@ -26,6 +26,7 @@ import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
 import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 const palette = {
   ink: "#0b1220",
@@ -196,7 +197,8 @@ const Navbar = () => {
         )}
 
         {isMobile ? (
-          <Box>
+          <Stack direction="row" spacing={1}>
+            {user && <NotificationBell />}
             <IconButton
               color="inherit"
               onClick={handleMenu}
@@ -274,9 +276,10 @@ const Navbar = () => {
                 </MenuItem>
               )}
             </Menu>
-          </Box>
+          </Stack>
         ) : user ? (
           <Stack direction="row" spacing={1.25} alignItems="center">
+            <NotificationBell />
             <Box sx={{ textAlign: "right", display: { xs: "none", lg: "block" } }}>
               <Typography variant="body2" fontWeight={850} sx={{ color: "white", lineHeight: 1.2 }}>
                 {user.name || "XFlyve user"}

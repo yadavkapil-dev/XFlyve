@@ -1,27 +1,24 @@
 const request = require("supertest");
+const http = require("http");
 
 // server.js is a bootstrap script, not an exported app — it connects to
-// Mongo and calls app.listen() as a side effect of being required. To test
-// its real /healthz handler without a live Mongo connection or a real bound
-// port, this mocks config/db (no real connection attempt) and intercepts
-// express.application.listen (capturing the exact app instance server.js
-// creates, and returning a fake handle rather than actually binding a
-// port). No changes to server.js itself.
-//
-// express must be required fresh in this same resetModules() scope — a
-// reference obtained before resetModules() would be a different module
-// instance than the one server.js picks up, so spying on it wouldn't
-// intercept anything (this bit us the same way in dbCapabilities.test.js).
+// Mongo and calls httpServer.listen() as a side effect of being required
+// (Socket.IO needs the raw http.Server, so server.js builds one explicitly
+// via http.createServer(app) instead of the Express app.listen() shortcut).
+// To test the real /healthz handler without a live Mongo connection or a
+// real bound port, this mocks config/db (no real connection attempt) and
+// intercepts http.Server.prototype.listen (capturing the exact server
+// instance server.js creates, and returning a fake handle rather than
+// actually binding a port). No changes to server.js itself.
 const loadServerApp = () => {
   jest.resetModules();
 
-  const express = require("express");
-  let capturedApp = null;
+  let capturedServer = null;
   // Only intercept server.js's own startup listen() call (the first one) —
-  // supertest also calls app.listen() internally per-request to spin up an
+  // supertest also calls .listen() internally per-request to spin up an
   // ephemeral test server, and that one must hit the real implementation.
-  jest.spyOn(express.application, "listen").mockImplementationOnce(function () {
-    capturedApp = this;
+  jest.spyOn(http.Server.prototype, "listen").mockImplementationOnce(function () {
+    capturedServer = this;
     return { close: jest.fn() };
   });
 
@@ -39,7 +36,7 @@ const loadServerApp = () => {
   require("../server");
   const mongoose = require("mongoose");
 
-  return { getApp: () => capturedApp, mongoose };
+  return { getApp: () => capturedServer, mongoose };
 };
 
 // connectDB().then(...) resolves asynchronously, so the app.listen() call

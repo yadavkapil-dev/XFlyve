@@ -7,6 +7,7 @@ const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter } = require("../utils/dateRange");
+const { notifyUser, notifyAdmins } = require("../services/notificationService");
 
 const POD_HISTORY_DAYS = 30;
 const POD_SORT_FIELDS = ["uploadDate", "createdAt"];
@@ -113,6 +114,14 @@ exports.uploadPOD = async (req, res) => {
         { $addToSet: { podIds: newPOD._id } }
       );
     }
+
+    await notifyAdmins({
+      type: "pod_submitted",
+      title: "POD submitted",
+      message: "A driver submitted a new POD for review.",
+      resourceType: "jobpod",
+      resourceId: newPOD._id,
+    });
 
     return res.status(201).json({ success: true, message: "POD uploaded", data: newPOD });
   } catch (err) {
@@ -328,6 +337,15 @@ exports.approvePOD = async (req, res) => {
 
     await pod.save();
 
+    await notifyUser({
+      recipient: pod.driverId,
+      type: "pod_approved",
+      title: "POD approved",
+      message: "Your proof of delivery has been approved.",
+      resourceType: "jobpod",
+      resourceId: pod._id,
+    });
+
     return res.status(200).json({ success: true, message: "POD approved", data: pod });
   } catch (err) {
     logger.error("Approve POD error: %o", err);
@@ -355,6 +373,17 @@ exports.rejectPOD = async (req, res) => {
     pod.approvedAt = null;
 
     await pod.save();
+
+    await notifyUser({
+      recipient: pod.driverId,
+      type: "pod_rejected",
+      title: "POD rejected",
+      message: rejectionReason
+        ? `Your proof of delivery was rejected: ${rejectionReason}`
+        : "Your proof of delivery was rejected.",
+      resourceType: "jobpod",
+      resourceId: pod._id,
+    });
 
     return res.status(200).json({ success: true, message: "POD rejected", data: pod });
   } catch (err) {

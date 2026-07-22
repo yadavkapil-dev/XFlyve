@@ -1,9 +1,14 @@
 import axios from "axios";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+
 // Create Axios instance with backend base URL
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3001/api",
+  baseURL: API_URL,
 });
+
+// Socket.IO connects to the bare server origin, not the "/api" REST prefix.
+export const SOCKET_URL = API_URL.replace(/\/api\/?$/, "");
 
 // Attach JWT token to all requests if present
 api.interceptors.request.use((config) => {
@@ -216,6 +221,13 @@ export const rejectPod = async (podId, payload) => {
   const { data } = await api.put(`/jobpods/${podId}/reject`, payload);
   return data.data;
 };
+
+// ===== NOTIFICATIONS =====
+// params: { page, limit, sort, unreadOnly }
+export const getNotifications = (params) => api.get("/notifications", { params });
+export const getUnreadNotificationCount = () => api.get("/notifications/unread-count");
+export const markNotificationRead = (id) => api.put(`/notifications/${id}/read`);
+export const markAllNotificationsRead = () => api.put("/notifications/read-all");
 
 // ===== PUBLIC ROUTE FOR PRESENTATION (NO TOKEN REQUIRED) =====
 export const getPublicDrivers = () => api.get("/admin/show-all-drivers");

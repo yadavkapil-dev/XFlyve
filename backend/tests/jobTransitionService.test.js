@@ -41,11 +41,17 @@ const loadService = ({ transactionsSupported = false } = {}) => {
     endSession: jest.fn().mockResolvedValue(undefined),
   };
 
+  const notificationService = {
+    notifyUser: jest.fn().mockResolvedValue(null),
+    notifyAdmins: jest.fn().mockResolvedValue(null),
+  };
+
   jest.doMock("../models/job", () => Job);
   jest.doMock("../models/truck", () => Truck);
   jest.doMock("../utils/dbCapabilities", () => ({
     supportsTransactions: jest.fn().mockResolvedValue(transactionsSupported),
   }));
+  jest.doMock("../services/notificationService", () => notificationService);
   jest.doMock("mongoose", () => {
     const actual = jest.requireActual("mongoose");
     return { ...actual, startSession: jest.fn().mockResolvedValue(fakeSession) };
@@ -54,7 +60,7 @@ const loadService = ({ transactionsSupported = false } = {}) => {
   const service = require("../services/jobTransitionService");
   const mockedMongoose = require("mongoose");
 
-  return { service, Job, Truck, fakeSession, mockedMongoose };
+  return { service, Job, Truck, fakeSession, mockedMongoose, notificationService };
 };
 
 describe("jobTransitionService.startJob", () => {

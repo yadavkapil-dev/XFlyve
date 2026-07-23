@@ -229,6 +229,12 @@ export const getUnreadNotificationCount = () => api.get("/notifications/unread-c
 export const markNotificationRead = (id) => api.put(`/notifications/${id}/read`);
 export const markAllNotificationsRead = () => api.put("/notifications/read-all");
 
+// ===== ACTIVITY (read-only) =====
+// Chronological activity history for one job — powers the Activity Timeline
+// on the job edit view. No create/update/delete calls exist for this
+// resource anywhere in the app; the collection is write-once server-side.
+export const getJobActivity = (jobId) => api.get(`/activities/job/${jobId}`);
+
 // ===== PUBLIC ROUTE FOR PRESENTATION (NO TOKEN REQUIRED) =====
 export const getPublicDrivers = () => api.get("/admin/show-all-drivers");
 

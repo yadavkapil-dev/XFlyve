@@ -5,6 +5,7 @@ const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter, normalizeDateOnly: normalizeQueryDate, getMondayStartWeekRange } = require("../utils/dateRange");
 const { notifyUser, notifyAdmins } = require("../services/notificationService");
+const { logActivity } = require("../services/activityService");
 
 const WORKLOG_SORT_FIELDS = ["workDate", "date", "createdAt"];
 const WORKLOG_DEFAULT_SORT = { workDate: -1, date: -1 };
@@ -163,6 +164,16 @@ exports.createWorkLog = async (req, res) => {
       message: "A driver submitted a new daily work log for review.",
       resourceType: "worklog",
       resourceId: newLog._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id || req.user._id,
+      actorRole: req.user.role,
+      action: "WORK_LOG_SUBMITTED",
+      resourceType: "worklog",
+      resourceId: newLog._id,
+      relatedJobId: newLog.jobIds?.[0] || null,
+      after: { status: newLog.status, jobIds: newLog.jobIds },
     });
 
     return res.status(201).json({
@@ -403,6 +414,8 @@ exports.approveWorkLog = async (req, res) => {
     const log = await DailyWorkLog.findById(logId);
     if (!log) return res.status(404).json({ success: false, message: "Work log not found" });
 
+    const previousStatus = log.status;
+
     log.status = "approved";
     log.approvedBy = req.user.id;
     log.approvedAt = new Date();
@@ -419,6 +432,17 @@ exports.approveWorkLog = async (req, res) => {
       message: "Your daily work log has been approved.",
       resourceType: "worklog",
       resourceId: log._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "WORK_LOG_APPROVED",
+      resourceType: "worklog",
+      resourceId: log._id,
+      relatedJobId: log.jobIds?.[0] || null,
+      before: { status: previousStatus },
+      after: { status: log.status },
     });
 
     return res.status(200).json({ success: true, message: "Daily record approved", data: log });
@@ -440,6 +464,8 @@ exports.rejectWorkLog = async (req, res) => {
     const log = await DailyWorkLog.findById(logId);
     if (!log) return res.status(404).json({ success: false, message: "Work log not found" });
 
+    const previousStatus = log.status;
+
     log.status = "rejected";
     log.rejectedBy = req.user.id;
     log.rejectedAt = new Date();
@@ -458,6 +484,18 @@ exports.rejectWorkLog = async (req, res) => {
         : "Your daily work log was rejected.",
       resourceType: "worklog",
       resourceId: log._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "WORK_LOG_REJECTED",
+      resourceType: "worklog",
+      resourceId: log._id,
+      relatedJobId: log.jobIds?.[0] || null,
+      before: { status: previousStatus },
+      after: { status: log.status },
+      metadata: { rejectionReason: log.rejectionReason },
     });
 
     return res.status(200).json({ success: true, message: "Daily record rejected", data: log });

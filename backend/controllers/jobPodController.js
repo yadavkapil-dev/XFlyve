@@ -8,6 +8,7 @@ const streamifier = require("streamifier");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser, notifyAdmins } = require("../services/notificationService");
+const { logActivity } = require("../services/activityService");
 
 const POD_HISTORY_DAYS = 30;
 const POD_SORT_FIELDS = ["uploadDate", "createdAt"];
@@ -121,6 +122,16 @@ exports.uploadPOD = async (req, res) => {
       message: "A driver submitted a new POD for review.",
       resourceType: "jobpod",
       resourceId: newPOD._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "POD_SUBMITTED",
+      resourceType: "jobpod",
+      resourceId: newPOD._id,
+      relatedJobId: linkedJob?._id || null,
+      after: { status: newPOD.status, jobId: newPOD.jobId },
     });
 
     return res.status(201).json({ success: true, message: "POD uploaded", data: newPOD });
@@ -328,6 +339,8 @@ exports.approvePOD = async (req, res) => {
     const pod = await JobPod.findById(podId);
     if (!pod) return res.status(404).json({ success: false, message: "POD not found" });
 
+    const previousStatus = pod.status;
+
     pod.status = "approved";
     pod.approvedBy = req.user.id;
     pod.approvedAt = new Date();
@@ -344,6 +357,17 @@ exports.approvePOD = async (req, res) => {
       message: "Your proof of delivery has been approved.",
       resourceType: "jobpod",
       resourceId: pod._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "POD_APPROVED",
+      resourceType: "jobpod",
+      resourceId: pod._id,
+      relatedJobId: pod.jobId,
+      before: { status: previousStatus },
+      after: { status: pod.status },
     });
 
     return res.status(200).json({ success: true, message: "POD approved", data: pod });
@@ -365,6 +389,8 @@ exports.rejectPOD = async (req, res) => {
     const pod = await JobPod.findById(podId);
     if (!pod) return res.status(404).json({ success: false, message: "POD not found" });
 
+    const previousStatus = pod.status;
+
     pod.status = "rejected";
     pod.rejectedBy = req.user.id;
     pod.rejectedAt = new Date();
@@ -383,6 +409,18 @@ exports.rejectPOD = async (req, res) => {
         : "Your proof of delivery was rejected.",
       resourceType: "jobpod",
       resourceId: pod._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "POD_REJECTED",
+      resourceType: "jobpod",
+      resourceId: pod._id,
+      relatedJobId: pod.jobId,
+      before: { status: previousStatus },
+      after: { status: pod.status },
+      metadata: { rejectionReason: pod.rejectionReason },
     });
 
     return res.status(200).json({ success: true, message: "POD rejected", data: pod });

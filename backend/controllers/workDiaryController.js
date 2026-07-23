@@ -8,6 +8,7 @@ const streamifier = require("streamifier");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser, notifyAdmins } = require("../services/notificationService");
+const { logActivity } = require("../services/activityService");
 
 const DIARY_HISTORY_DAYS = 30;
 const DIARY_SORT_FIELDS = ["uploadDate", "createdAt", "workDate"];
@@ -142,6 +143,16 @@ exports.uploadWorkDiary = async (req, res) => {
       message: "A driver submitted a new work diary for review.",
       resourceType: "workdiary",
       resourceId: newDiary._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "DIARY_SUBMITTED",
+      resourceType: "workdiary",
+      resourceId: newDiary._id,
+      relatedJobId: linkedJob?._id || null,
+      after: { status: newDiary.status, jobId: newDiary.jobId },
     });
 
     return res.status(201).json({ success: true, message: "Work diary uploaded", data: newDiary });
@@ -349,6 +360,8 @@ exports.approveWorkDiary = async (req, res) => {
     const workDiary = await WorkDiary.findById(id);
     if (!workDiary) return res.status(404).json({ success: false, message: "Work diary not found" });
 
+    const previousStatus = workDiary.status;
+
     workDiary.status = "approved";
     workDiary.approvedBy = req.user.id;
     workDiary.approvedAt = new Date();
@@ -365,6 +378,17 @@ exports.approveWorkDiary = async (req, res) => {
       message: "Your work diary has been approved.",
       resourceType: "workdiary",
       resourceId: workDiary._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "DIARY_APPROVED",
+      resourceType: "workdiary",
+      resourceId: workDiary._id,
+      relatedJobId: workDiary.jobId,
+      before: { status: previousStatus },
+      after: { status: workDiary.status },
     });
 
     return res.status(200).json({ success: true, message: "Work diary approved", data: workDiary });
@@ -386,6 +410,8 @@ exports.rejectWorkDiary = async (req, res) => {
     const workDiary = await WorkDiary.findById(id);
     if (!workDiary) return res.status(404).json({ success: false, message: "Work diary not found" });
 
+    const previousStatus = workDiary.status;
+
     workDiary.status = "rejected";
     workDiary.rejectedBy = req.user.id;
     workDiary.rejectedAt = new Date();
@@ -404,6 +430,18 @@ exports.rejectWorkDiary = async (req, res) => {
         : "Your work diary was rejected.",
       resourceType: "workdiary",
       resourceId: workDiary._id,
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "DIARY_REJECTED",
+      resourceType: "workdiary",
+      resourceId: workDiary._id,
+      relatedJobId: workDiary.jobId,
+      before: { status: previousStatus },
+      after: { status: workDiary.status },
+      metadata: { rejectionReason: workDiary.rejectionReason },
     });
 
     return res.status(200).json({ success: true, message: "Work diary rejected", data: workDiary });

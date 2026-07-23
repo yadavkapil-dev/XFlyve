@@ -27,17 +27,22 @@ const loadController = () => {
     notifyUser: jest.fn().mockResolvedValue(null),
     notifyAdmins: jest.fn().mockResolvedValue(null),
   };
+  const activityService = {
+    logActivity: jest.fn().mockResolvedValue(null),
+  };
 
   jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
   jest.doMock("../models/job", () => Job);
   jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
   jest.doMock("../services/notificationService", () => notificationService);
+  jest.doMock("../services/activityService", () => activityService);
 
   return {
     controller: require("../controllers/workLogController"),
     DailyWorkLog,
     Job,
     notificationService,
+    activityService,
   };
 };
 

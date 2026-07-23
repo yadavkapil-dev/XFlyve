@@ -28,6 +28,7 @@ const jobPodRoutes = require("./routes/jobPodRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const workDiaryRoutes = require("./routes/workDiaryRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const activityRoutes = require("./routes/activityRoutes");
 
 const app = express();
 app.disable("x-powered-by");
@@ -113,6 +114,7 @@ app.use("/api/jobpods", jobPodRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/workdiaries", workDiaryRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/activities", activityRoutes);
 
 app.get("/", (req, res) => {
   res.json({

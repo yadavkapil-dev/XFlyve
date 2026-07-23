@@ -27,6 +27,10 @@ const notificationServiceMock = () => ({
   notifyAdmins: jest.fn().mockResolvedValue(null),
 });
 
+const activityServiceMock = () => ({
+  logActivity: jest.fn().mockResolvedValue(null),
+});
+
 // ---------------------------------------------------------------------------
 // jobTransitionService: job_started / job_completed -> notifyAdmins
 // ---------------------------------------------------------------------------
@@ -41,11 +45,13 @@ describe("Trigger: job start/complete -> notifyAdmins (jobTransitionService)", (
       updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
     };
     const notificationService = notificationServiceMock();
+    const activityService = activityServiceMock();
 
     jest.doMock("../models/job", () => Job);
     jest.doMock("../models/truck", () => Truck);
     jest.doMock("../utils/dbCapabilities", () => ({ supportsTransactions: jest.fn().mockResolvedValue(false) }));
     jest.doMock("../services/notificationService", () => notificationService);
+    jest.doMock("../services/activityService", () => activityService);
 
     return { service: require("../services/jobTransitionService"), Job, Truck, notificationService };
   };
@@ -99,12 +105,14 @@ describe("Trigger: job create/update -> notifyUser (jobController)", () => {
     const Driver = { findById: jest.fn() };
     const Truck = { findById: jest.fn(), findOneAndUpdate: jest.fn(), updateOne: jest.fn() };
     const notificationService = notificationServiceMock();
+    const activityService = activityServiceMock();
 
     jest.doMock("../models/job", () => Job);
     jest.doMock("../models/driver", () => Driver);
     jest.doMock("../models/truck", () => Truck);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
+    jest.doMock("../services/activityService", () => activityService);
 
     return { controller: require("../controllers/jobController"), Job, Driver, Truck, notificationService };
   };
@@ -139,6 +147,7 @@ describe("Trigger: job create/update -> notifyUser (jobController)", () => {
         jobDate: dateInputValue(),
         jobType: "local",
       },
+      user: { id: "admin-1", role: "admin" },
     };
     const res = makeResponse();
 
@@ -232,6 +241,7 @@ describe("Trigger: POD upload/approve/reject", () => {
     JobPod.findById = jest.fn();
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
     const notificationService = notificationServiceMock();
+    const activityService = activityServiceMock();
 
     jest.doMock("../models/jobPod", () => JobPod);
     jest.doMock("../models/job", () => Job);
@@ -239,6 +249,7 @@ describe("Trigger: POD upload/approve/reject", () => {
     jest.doMock("streamifier", fakeStreamifier);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
+    jest.doMock("../services/activityService", () => activityService);
 
     return { controller: require("../controllers/jobPodController"), JobPod, Job, notificationService };
   };
@@ -311,6 +322,7 @@ describe("Trigger: work diary upload/approve/reject", () => {
     WorkDiary.findById = jest.fn();
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
     const notificationService = notificationServiceMock();
+    const activityService = activityServiceMock();
 
     jest.doMock("../models/workDiary", () => WorkDiary);
     jest.doMock("../models/job", () => Job);
@@ -318,6 +330,7 @@ describe("Trigger: work diary upload/approve/reject", () => {
     jest.doMock("streamifier", fakeStreamifier);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
+    jest.doMock("../services/activityService", () => activityService);
 
     return { controller: require("../controllers/workDiaryController"), WorkDiary, Job, notificationService };
   };
@@ -390,11 +403,13 @@ describe("Trigger: work log create/approve/reject", () => {
     DailyWorkLog.findById = jest.fn();
     const Job = { findOne: jest.fn() };
     const notificationService = notificationServiceMock();
+    const activityService = activityServiceMock();
 
     jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
     jest.doMock("../models/job", () => Job);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
+    jest.doMock("../services/activityService", () => activityService);
 
     return { controller: require("../controllers/workLogController"), DailyWorkLog, Job, notificationService };
   };

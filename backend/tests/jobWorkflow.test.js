@@ -81,12 +81,16 @@ const loadJobController = () => {
     notifyUser: jest.fn().mockResolvedValue(null),
     notifyAdmins: jest.fn().mockResolvedValue(null),
   };
+  const activityService = {
+    logActivity: jest.fn().mockResolvedValue(null),
+  };
 
   jest.doMock("../models/job", () => Job);
   jest.doMock("../models/driver", () => Driver);
   jest.doMock("../models/truck", () => Truck);
   jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
   jest.doMock("../services/notificationService", () => notificationService);
+  jest.doMock("../services/activityService", () => activityService);
 
   return {
     controller: require("../controllers/jobController"),
@@ -94,6 +98,7 @@ const loadJobController = () => {
     Driver,
     Truck,
     notificationService,
+    activityService,
   };
 };
 
@@ -173,6 +178,7 @@ describe("Job workflow controller", () => {
         jobDate: dateInputValue(),
         jobType: "local",
       },
+      user: { id: new mongoose.Types.ObjectId().toString(), role: "admin" },
     };
     const res = makeResponse();
 
@@ -205,6 +211,7 @@ describe("Job workflow controller", () => {
         jobDate: dateInputValue(-1),
         jobType: "local",
       },
+      user: { id: new mongoose.Types.ObjectId().toString(), role: "admin" },
     };
     const res = makeResponse();
 
@@ -241,6 +248,7 @@ describe("Job workflow controller", () => {
         jobDate: dateInputValue(1),
         jobType: "local",
       },
+      user: { id: new mongoose.Types.ObjectId().toString(), role: "admin" },
     };
     const res = makeResponse();
 
@@ -508,6 +516,7 @@ describe("Job workflow controller", () => {
         jobDate: dateInputValue(),
         jobType: "local",
       },
+      user: { id: new mongoose.Types.ObjectId().toString(), role: "admin" },
     };
     const res = makeResponse();
 

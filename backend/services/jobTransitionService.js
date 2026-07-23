@@ -3,6 +3,7 @@ const Job = require("../models/job");
 const Truck = require("../models/truck");
 const { supportsTransactions } = require("../utils/dbCapabilities");
 const { notifyAdmins } = require("./notificationService");
+const { logActivity } = require("./activityService");
 
 /**
  * Domain-rule error for job/truck transitions. Controllers translate this
@@ -72,7 +73,7 @@ const withOptionalTransaction = async (fn) => {
  * two concurrent start requests from both winning the same truck — that
  * guarantee holds on MongoDB regardless of transaction/replica-set support.
  */
-const startJob = async (job) => {
+const startJob = async (job, actor) => {
   if (job.status !== "pending") {
     throw new JobTransitionError(
       job.status === "in-progress"
@@ -122,13 +123,24 @@ const startJob = async (job) => {
 
   // Centralized here (not in each controller that calls startJob) so every
   // caller — the driver-facing updateJob transition and any future one —
-  // gets this notification for free.
+  // gets this notification (and the matching activity record) for free.
   await notifyAdmins({
     type: "job_started",
     title: "Job started",
     message: `${job.title || "A job"} has been started.`,
     resourceType: "job",
     resourceId: job._id,
+  });
+
+  await logActivity({
+    actorId: actor?.id,
+    actorRole: actor?.role,
+    action: "JOB_STARTED",
+    resourceType: "job",
+    resourceId: job._id,
+    relatedJobId: job._id,
+    before: { status: "pending" },
+    after: { status: "in-progress" },
   });
 
   return result;
@@ -139,7 +151,7 @@ const startJob = async (job) => {
  * (-> available). `job` must already be the mongoose document the caller
  * has authorized against (ownership/role checks stay in the controller).
  */
-const completeJob = async (job) => {
+const completeJob = async (job, actor) => {
   if (job.status !== "in-progress") {
     throw new JobTransitionError("Only an in-progress job can be completed", 409);
   }
@@ -168,6 +180,17 @@ const completeJob = async (job) => {
     message: `${job.title || "A job"} has been completed.`,
     resourceType: "job",
     resourceId: job._id,
+  });
+
+  await logActivity({
+    actorId: actor?.id,
+    actorRole: actor?.role,
+    action: "JOB_COMPLETED",
+    resourceType: "job",
+    resourceId: job._id,
+    relatedJobId: job._id,
+    before: { status: "in-progress" },
+    after: { status: "completed" },
   });
 
   return result;

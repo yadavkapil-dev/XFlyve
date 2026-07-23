@@ -14,6 +14,7 @@ const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pa
 const { buildSearchOr } = require("../utils/search");
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser } = require("../services/notificationService");
+const { logActivity } = require("../services/activityService");
 
 const JOB_SORT_FIELDS = ["jobDate", "createdAt", "status", "title"];
 const JOB_DEFAULT_SORT = { jobDate: 1 };
@@ -166,6 +167,33 @@ exports.createJob = async (req, res) => {
       resourceId: newJob._id,
     });
 
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "JOB_CREATED",
+      resourceType: "job",
+      resourceId: newJob._id,
+      relatedJobId: newJob._id,
+      after: {
+        title: newJob.title,
+        status: newJob.status,
+        assignedTo: newJob.assignedTo,
+        assignedTruck: newJob.assignedTruck,
+        jobDate: newJob.jobDate,
+        jobType: newJob.jobType,
+      },
+    });
+
+    await logActivity({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      action: "JOB_ASSIGNED",
+      resourceType: "job",
+      resourceId: newJob._id,
+      relatedJobId: newJob._id,
+      after: { assignedTo: newJob.assignedTo },
+    });
+
     res.status(201).json({ status: "success", data: newJob });
   } catch (err) {
     logger.error("Create Job Error: %o", err);
@@ -285,7 +313,7 @@ exports.markJobComplete = async (req, res) => {
       return res.status(403).json({ status: "fail", message: "Unauthorized" });
     }
 
-    const updatedJob = await completeJob(job);
+    const updatedJob = await completeJob(job, { id: req.user.id, role: req.user.role });
 
     res.status(200).json({
       status: "success",
@@ -362,6 +390,21 @@ exports.updateJob = async (req, res) => {
     }
 
     const previousAssignedTo = job.assignedTo.toString();
+    // Captured before any mutation below, for the JOB_UPDATED activity's
+    // `before` snapshot on the admin-edit path.
+    const beforeSnapshot = {
+      title: job.title,
+      description: job.description,
+      pickupLocation: job.pickupLocation,
+      deliveryLocation: job.deliveryLocation,
+      jobRate: job.jobRate,
+      invoiceStatus: job.invoiceStatus,
+      assignedTo: job.assignedTo,
+      assignedTruck: job.assignedTruck,
+      jobDate: job.jobDate,
+      jobType: job.jobType,
+      status: job.status,
+    };
 
     if (user.role === "driver") {
       // Driver can only update status of own jobs
@@ -379,9 +422,11 @@ exports.updateJob = async (req, res) => {
         });
       }
 
+      const actor = { id: user.id, role: user.role };
+
       try {
         if (status === "in-progress") {
-          await startJob(job);
+          await startJob(job, actor);
 
           const updatedJob = await Job.findById(jobId)
             .populate("assignedTruck", "truckNumber")
@@ -390,7 +435,7 @@ exports.updateJob = async (req, res) => {
           return res.status(200).json({ status: "success", data: updatedJob });
         }
 
-        const updatedJob = await completeJob(job);
+        const updatedJob = await completeJob(job, actor);
         return res.status(200).json({ status: "success", data: updatedJob });
       } catch (err) {
         if (err instanceof JobTransitionError) {
@@ -498,6 +543,17 @@ exports.updateJob = async (req, res) => {
         resourceType: "job",
         resourceId: job._id,
       });
+
+      await logActivity({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "JOB_ASSIGNED",
+        resourceType: "job",
+        resourceId: job._id,
+        relatedJobId: job._id,
+        before: { assignedTo: previousAssignedTo },
+        after: { assignedTo: nextAssignedTo },
+      });
     } else {
       await notifyUser({
         recipient: job.assignedTo,
@@ -506,6 +562,29 @@ exports.updateJob = async (req, res) => {
         message: `Your job "${job.title}" has been updated.`,
         resourceType: "job",
         resourceId: job._id,
+      });
+
+      await logActivity({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "JOB_UPDATED",
+        resourceType: "job",
+        resourceId: job._id,
+        relatedJobId: job._id,
+        before: beforeSnapshot,
+        after: {
+          title: job.title,
+          description: job.description,
+          pickupLocation: job.pickupLocation,
+          deliveryLocation: job.deliveryLocation,
+          jobRate: job.jobRate,
+          invoiceStatus: job.invoiceStatus,
+          assignedTo: job.assignedTo,
+          assignedTruck: job.assignedTruck,
+          jobDate: job.jobDate,
+          jobType: job.jobType,
+          status: job.status,
+        },
       });
     }
 

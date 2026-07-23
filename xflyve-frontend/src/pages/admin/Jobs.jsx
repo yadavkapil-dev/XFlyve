@@ -9,6 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   MenuItem,
   Paper,
   Stack,
@@ -27,6 +28,7 @@ import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { getAllJobs, deleteJob, getAllTrucks, getAllTruckAssignments, getAllDrivers, updateJob } from "../../api";
 import PaginationControls from "../../components/PaginationControls";
+import ActivityTimeline from "../../components/ActivityTimeline";
 
 const palette = {
   ink: "#0b1220",
@@ -375,6 +377,16 @@ const Jobs = () => {
               </TextField>
               <TextField fullWidth label="Run Date" type="date" name="jobDate" value={editJob?.jobDate || ""} onChange={handleEditChange} InputLabelProps={{ shrink: true }} required />
             </Stack>
+
+            {editJob?._id && (
+              <>
+                <Divider sx={{ my: 2.5 }} />
+                <Typography variant="subtitle2" fontWeight={950} sx={{ color: palette.ink, mb: 1.5 }}>
+                  Activity Timeline
+                </Typography>
+                <ActivityTimeline jobId={editJob._id} />
+              </>
+            )}
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={() => setEditOpen(false)} sx={{ borderRadius: 3 }}>Cancel</Button>

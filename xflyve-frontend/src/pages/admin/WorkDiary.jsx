@@ -103,7 +103,12 @@ const WorkDiary = () => {
 
   const fetchDiaries = useCallback(async () => {
     setError("");
-    setSuccess("");
+    // Not clearing success here: handleApprove/handleReject/handleDelete
+    // set a success message and then call this (directly or via
+    // refreshDiaries) to refresh the lists — clearing it here wiped the
+    // confirmation before the user ever saw it. Each action already resets
+    // success at its own start, so a stale message never lingers past the
+    // next action.
     if (!selectedDriver) {
       setDiaries([]);
       setDiariesPagination(null);

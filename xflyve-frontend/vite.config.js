@@ -18,6 +18,15 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.js'],
     globals: true,
     mockReset: true,
+    coverage: {
+      provider: 'v8',
+      // Count every src file in the denominator, not just the handful
+      // actually imported by a test — otherwise the untested majority of
+      // the app is silently excluded rather than reported as 0%.
+      all: true,
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/main.jsx', 'src/test/**'],
+    },
   },
   server: {
     open: true,

@@ -714,5 +714,119 @@ describe("Job workflow model", () => {
 
       await expect(job.isInvoiceReady()).resolves.toBe(true);
     });
+
+    test.each(["pending", "in-progress"])(
+      "a %s job is never invoice ready, regardless of POD/diary approval, and never even checks them",
+      async (status) => {
+        const Job = loadJobModel();
+        mockDocumentChecks(Job, { hasPod: true, hasDiary: true });
+        const job = new Job({
+          title: "Local delivery",
+          pickupLocation: "Depot",
+          deliveryLocation: "Customer",
+          assignedTo: new mongoose.Types.ObjectId(),
+          assignedTruck: new mongoose.Types.ObjectId(),
+          jobDate: new Date("2026-07-10T00:00:00.000Z"),
+          jobType: "local",
+          status,
+        });
+
+        await expect(job.isInvoiceReady()).resolves.toBe(false);
+        // Short-circuits on status before ever querying JobPod/WorkDiary —
+        // an in-progress job with a stray approved POD from a prior run
+        // shouldn't trigger a real query just to say "no".
+        const modelMongoose = Job.base;
+        expect(modelMongoose.models.JobPod.exists).not.toHaveBeenCalled();
+      }
+    );
+
+    test("an archived job is never invoice ready even if otherwise complete and approved", async () => {
+      const Job = loadJobModel();
+      mockDocumentChecks(Job, { hasPod: true, hasDiary: true });
+      const job = new Job({
+        title: "Local delivery",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: new mongoose.Types.ObjectId(),
+        assignedTruck: new mongoose.Types.ObjectId(),
+        jobDate: new Date("2026-07-10T00:00:00.000Z"),
+        jobType: "local",
+        status: "completed",
+        recordStatus: "archived",
+      });
+
+      await expect(job.isInvoiceReady()).resolves.toBe(false);
+    });
+
+    test.each(["invoiced", "paid"])(
+      "a job already marked '%s' is not invoice ready again — prevents double-invoicing",
+      async (invoiceStatus) => {
+        const Job = loadJobModel();
+        mockDocumentChecks(Job, { hasPod: true, hasDiary: true });
+        const job = new Job({
+          title: "Local delivery",
+          pickupLocation: "Depot",
+          deliveryLocation: "Customer",
+          assignedTo: new mongoose.Types.ObjectId(),
+          assignedTruck: new mongoose.Types.ObjectId(),
+          jobDate: new Date("2026-07-10T00:00:00.000Z"),
+          jobType: "local",
+          status: "completed",
+          invoiceStatus,
+        });
+
+        await expect(job.isInvoiceReady()).resolves.toBe(false);
+      }
+    );
+
+    test("a local job without an approved POD is not invoice ready", async () => {
+      const Job = loadJobModel();
+      mockDocumentChecks(Job, { hasPod: false, hasDiary: false });
+      const job = new Job({
+        title: "Local delivery",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: new mongoose.Types.ObjectId(),
+        assignedTruck: new mongoose.Types.ObjectId(),
+        jobDate: new Date("2026-07-10T00:00:00.000Z"),
+        jobType: "local",
+        status: "completed",
+      });
+
+      await expect(job.isInvoiceReady()).resolves.toBe(false);
+    });
+
+    describe("findReadyForInvoicing", () => {
+      test("queries completed, non-archived jobs with pending/ready invoiceStatus, then keeps only the ones that pass isInvoiceReady", async () => {
+        const Job = loadJobModel();
+        const readyJob = { isInvoiceReady: jest.fn().mockResolvedValue(true) };
+        const notReadyJob = { isInvoiceReady: jest.fn().mockResolvedValue(false) };
+        jest.spyOn(Job, "find").mockResolvedValueOnce([readyJob, notReadyJob]);
+
+        const result = await Job.findReadyForInvoicing();
+
+        expect(Job.find).toHaveBeenCalledWith({
+          status: "completed",
+          recordStatus: { $ne: "archived" },
+          invoiceStatus: { $in: ["pending", "ready"] },
+        });
+        expect(result).toEqual([readyJob]);
+      });
+
+      test("returns an empty array when no completed job passes isInvoiceReady", async () => {
+        const Job = loadJobModel();
+        const notReadyJob = { isInvoiceReady: jest.fn().mockResolvedValue(false) };
+        jest.spyOn(Job, "find").mockResolvedValueOnce([notReadyJob]);
+
+        await expect(Job.findReadyForInvoicing()).resolves.toEqual([]);
+      });
+
+      test("returns an empty array when no jobs match the base query at all", async () => {
+        const Job = loadJobModel();
+        jest.spyOn(Job, "find").mockResolvedValueOnce([]);
+
+        await expect(Job.findReadyForInvoicing()).resolves.toEqual([]);
+      });
+    });
   });
 });

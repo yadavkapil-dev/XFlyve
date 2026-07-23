@@ -112,6 +112,16 @@ describe("jobTransitionService.startJob", () => {
     expect(Truck.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
+  test("truck availability: an archived truck rejects the start even though its status still says 'available'", async () => {
+    const { service, Truck } = loadService();
+    const jobDoc = makeJobDoc({ status: "pending" });
+    Truck.findById.mockResolvedValueOnce(makeTruckDoc({ status: "available", recordStatus: "archived" }));
+
+    await expect(service.startJob(jobDoc)).rejects.toMatchObject({ statusCode: 409 });
+    expect(jobDoc.save).not.toHaveBeenCalled();
+    expect(Truck.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
   test("concurrency: loses the race when another request already claimed the truck", async () => {
     const { service, Truck, Job } = loadService();
     const truckDoc = makeTruckDoc();
@@ -218,6 +228,19 @@ describe("jobTransitionService.completeJob", () => {
 
 describe("jobTransitionService.reassignJob", () => {
   afterEach(() => jest.restoreAllMocks());
+
+  test("no-op: reassigning to the same truck it's already on does nothing (no truck claim/release, no save)", async () => {
+    const { service, Truck } = loadService();
+    const truckId = makeObjectId();
+    const jobDoc = makeJobDoc({ assignedTruck: truckId, status: "in-progress" });
+
+    const result = await service.reassignJob(jobDoc, truckId);
+
+    expect(result).toBe(jobDoc);
+    expect(Truck.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(Truck.updateOne).not.toHaveBeenCalled();
+    expect(jobDoc.save).not.toHaveBeenCalled();
+  });
 
   test("valid reassignment: releases the old truck and claims the new one", async () => {
     const { service, Truck, Job } = loadService();

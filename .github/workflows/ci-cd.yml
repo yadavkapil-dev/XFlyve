@@ -120,6 +120,13 @@ jobs:
   # here, only wiring it into CI. Needs backend/'s and xflyve-frontend/'s
   # own node_modules installed too, since that's what the webServer commands
   # actually run against.
+  #
+  # Node 20 here (not 18): this job's own webServer boots the real Vite dev
+  # server to serve the frontend during the test, and Vite itself requires
+  # Node 20.19+ — independent of jsdom (which this job never touches, since
+  # Playwright drives a real Chromium browser, not a simulated DOM). The
+  # backend job stays on 18: it never starts Vite, only the real Node HTTP
+  # server, matching the Dockerfile.
   # ===========================================================================
   e2e:
     name: E2E workflow test
@@ -133,7 +140,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           cache: "npm"
           cache-dependency-path: |
             backend/package-lock.json

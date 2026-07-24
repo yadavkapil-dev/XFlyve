@@ -11,6 +11,8 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const compression = require("compression");
 const { apiLimiter } = require("./config/rateLimiters");
+const swaggerUi = require("swagger-ui-express");
+const openApiSpec = require("./docs/openapi");
 const logger = require("./utils/logger");
 const { Sentry, isSentryEnabled } = require("./config/sentry");
 const requestId = require("./middlewares/requestId");
@@ -62,6 +64,11 @@ app.use(
     credentials: true,
   })
 );
+
+// Mounted before the global helmet() below so its default Content-Security-
+// Policy (script-src/style-src 'self') never applies here — Swagger UI's
+// bundled assets need inline styles/scripts to render.
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 app.use(helmet());
 app.use(morgan("dev"));

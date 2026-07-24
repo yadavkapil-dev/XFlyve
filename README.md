@@ -429,16 +429,83 @@ Replace `<load-test-file>` with the path to the Artillery configuration in the r
 
 ## CI/CD
 
-GitHub Actions is used for continuous integration and deployment workflows.
+GitHub Actions (`.github/workflows/ci-cd.yml`) runs on every push and pull
+request to `main` and `production-readiness`:
 
-The pipeline supports automated quality checks such as:
+1. **Backend tests** — install, unit tests, then integration tests against an
+   isolated in-memory MongoDB (`mongodb-memory-server`, via
+   `backend/tests/integration/testDb.js`) — never a real Atlas connection.
+2. **Frontend tests + build** — install, ESLint, Vitest, production build.
+   (The backend has no ESLint configured yet, so backend lint isn't part of
+   this pipeline — a known gap, not an oversight.)
+3. **Docker build** — builds both images on every run (validating the
+   Dockerfiles); on an actual push, also pushes them to Docker Hub tagged
+   with both `latest` and the triggering commit SHA.
+4. **Deploy** — only on a push to `main` (never PRs, never
+   `production-readiness`), and only after the three jobs above succeed:
+   triggers Render's deploy hook for the backend, polls `/healthz` until it
+   reports healthy, then triggers Vercel's deploy hook for the frontend and
+   confirms it's reachable.
 
-- Dependency installation
-- Application builds
-- Automated tests
-- Deployment preparation
+Deployment is intentionally gated behind CI passing — see below for what
+that requires in the Render/Vercel dashboards, and required GitHub secrets.
 
-The frontend is deployed to Vercel, while the backend is hosted on Render.
+### Required GitHub secrets
+
+| Secret | Used for | Where to get it |
+|---|---|---|
+| `DOCKER_USERNAME` / `DOCKER_PASSWORD` | Pushing Docker images | Docker Hub account (already configured previously) |
+| `RENDER_DEPLOY_HOOK_URL` | Triggering a backend deploy | Render dashboard → backend service → Settings → **Deploy Hook** |
+| `VERCEL_DEPLOY_HOOK_URL` | Triggering a frontend deploy | Vercel dashboard → project → Settings → Git → **Deploy Hooks** (create one for the `main` branch) |
+
+### Turning off Render/Vercel's own auto-deploy
+
+Both platforms can deploy independently of this pipeline whenever they see a
+new push, via their native GitHub integration. For the CI gate above to
+actually mean anything (not just race against an independent deploy),
+auto-deploy needs to be turned off in both dashboards, leaving the deploy
+hooks above as the only way a deploy happens:
+
+- **Render**: backend service → Settings → **Auto-Deploy** → set to *No* (or *Off*).
+- **Vercel**: project → Settings → Git → confirm the connected branch, then
+  disable auto-deploy for it (via an *Ignored Build Step* that always exits
+  non-zero, or the project's auto-deploy toggle if your plan exposes one
+  directly) — deploys still happen, but only when the deploy hook is called.
+
+The frontend is deployed to Vercel, the backend to Render.
+
+---
+
+## Rollback
+
+Both Render and Vercel keep every previous deploy addressable, so rolling
+back doesn't require reverting code first.
+
+**Backend (Render)**
+1. Render dashboard → backend service → **Events** (or **Deploys**) tab.
+2. Find the last deploy known to be good, identified by its commit message/SHA.
+3. Click **Redeploy** (or **Rollback to this deploy**) on that entry.
+4. Confirm it's healthy: `curl https://xflyve.onrender.com/healthz`.
+
+**Frontend (Vercel)**
+1. Vercel dashboard → project → **Deployments** tab.
+2. Find the last deployment known to be good (each is listed with its commit SHA).
+3. Open its "..." menu → **Promote to Production** — this repoints the
+   production domain at that exact previous build immediately, no rebuild
+   needed.
+4. Confirm: visit https://xflyve.vercel.app.
+
+**Git-based alternative (backend)**: `git revert <bad-commit-sha>` and push
+to `main` — since deploy is gated on CI, the revert redeploys automatically
+once the pipeline passes, no dashboard clicks needed.
+
+**Docker images**: every CI run on a push tags both images with the
+triggering commit SHA (not just `latest`), pushed to Docker Hub. To recover
+the exact image behind a specific past deploy: `docker pull
+<username>/xflyve-backend:<commit-sha>` (find the SHA from `git log` or the
+GitHub Actions run history) — useful for inspecting or running that exact
+build locally, even though Render/Vercel build from source rather than
+pulling these images directly.
 
 ---
 

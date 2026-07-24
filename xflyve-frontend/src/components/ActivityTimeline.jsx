@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Box, CircularProgress, Stack, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import { getJobActivity } from "../api";
 
 const palette = {

@@ -4,36 +4,242 @@ on:
   push:
     branches:
       - main
+      - production-readiness
   pull_request:
     branches:
       - main
+      - production-readiness
 
 jobs:
-  build-and-push:
-    name: Build & Push Docker Images
+  # ===========================================================================
+  # Backend: unit tests (mocked, no DB) then integration tests (real routes
+  # against an isolated mongodb-memory-server instance — never a real Atlas
+  # connection; see backend/tests/integration/testDb.js).
+  # ===========================================================================
+  backend:
+    name: Backend tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      # Speeds up repeated runs — mongodb-memory-server otherwise downloads a
+      # real mongod binary from scratch on every job. Cache miss just means a
+      # slower first run, never a failure.
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: ${{ runner.os }}-mongodb-binaries-${{ hashFiles('backend/package-lock.json') }}
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: npm run test:unit
+
+      - name: Backend integration tests
+        working-directory: backend
+        run: npm run test:integration
+
+  # ===========================================================================
+  # Frontend: lint, Vitest, production build.
+  # ===========================================================================
+  frontend:
+    name: Frontend tests + build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: xflyve-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: xflyve-frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: xflyve-frontend
+        run: npm run lint
+
+      - name: Frontend tests
+        working-directory: xflyve-frontend
+        run: npm test
+
+      - name: Production build
+        working-directory: xflyve-frontend
+        run: npm run build
+
+  # ===========================================================================
+  # E2E: the one full admin->driver->admin workflow test (Phase 7E). Reuses
+  # the e2e/ setup exactly as it already runs locally — Playwright's own
+  # webServer config spins up the mongodb-memory-server-backed backend
+  # wrapper (backend/tests/e2e/start-e2e-backend.js) and a real Vite dev
+  # server, then tears both down; nothing about the test itself changes
+  # here, only wiring it into CI. Needs backend/'s and xflyve-frontend/'s
+  # own node_modules installed too, since that's what the webServer commands
+  # actually run against.
+  # ===========================================================================
+  e2e:
+    name: E2E workflow test
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: |
+            backend/package-lock.json
+            xflyve-frontend/package-lock.json
+            e2e/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: xflyve-frontend
+        run: npm ci
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: npx playwright install chromium --with-deps
+
+      # Same reasoning as the backend job's cache.
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: ${{ runner.os }}-mongodb-binaries-${{ hashFiles('backend/package-lock.json') }}
+
+      # Speeds up repeated runs — chromium is otherwise re-downloaded fresh
+      # every job. Cache miss just means a slower first run.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Run E2E workflow test
+        working-directory: e2e
+        run: npm test
+
+  # ===========================================================================
+  # Docker: build both images (validates the Dockerfiles on every push/PR),
+  # only pushed to Docker Hub on an actual push (not PRs, where secrets from
+  # a fork wouldn't be available anyway). Tagged with the commit SHA as well
+  # as `latest` — `latest` alone can't be pinned to a specific known-good
+  # build, which is exactly what rollback needs (see docs/rollback.md).
+  # ===========================================================================
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, e2e]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # ===== Build and push backend =====
-      - name: Build backend image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/xflyve-backend:latest ./backend
-          docker push ${{ secrets.DOCKER_USERNAME }}/xflyve-backend:latest
+      - name: Build & push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/xflyve-backend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/xflyve-backend:latest
 
-      # ===== Build and push frontend =====
-      - name: Build frontend image
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./xflyve-frontend
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/xflyve-frontend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/xflyve-frontend:latest
+
+  # ===========================================================================
+  # Deploy: only for an actual push to main (never PRs, never
+  # production-readiness) — this is what gates production deployment on the
+  # rest of the pipeline actually passing first, instead of Render/Vercel's
+  # own independent auto-deploy racing ahead on every push regardless of CI.
+  # Render/Vercel auto-deploy must be turned OFF in each dashboard for that
+  # gate to mean anything (see this phase's report for exact steps).
+  # ===========================================================================
+  deploy:
+    name: Deploy (Render + Vercel)
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      BACKEND_URL: https://xflyve.onrender.com
+      FRONTEND_URL: https://xflyve.vercel.app
+
+    steps:
+      - name: Trigger Render deploy hook (backend)
+        run: curl -sf -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      - name: Wait for backend /healthz to report healthy
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/xflyve-frontend:latest ./xflyve-frontend
-          docker push ${{ secrets.DOCKER_USERNAME }}/xflyve-frontend:latest
+          for i in $(seq 1 30); do
+            if curl -sf "$BACKEND_URL/healthz" | grep -q '"status":"ok"'; then
+              echo "Backend is healthy."
+              exit 0
+            fi
+            echo "Waiting for backend... (attempt $i/30)"
+            sleep 10
+          done
+          echo "Backend did not report healthy within the timeout." >&2
+          exit 1
+
+      - name: Trigger Vercel deploy hook (frontend)
+        run: curl -sf -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}"
+
+      - name: Verify frontend is reachable
+        run: |
+          for i in $(seq 1 18); do
+            if curl -sf -o /dev/null "$FRONTEND_URL"; then
+              echo "Frontend is reachable."
+              exit 0
+            fi
+            echo "Waiting for frontend... (attempt $i/18)"
+            sleep 10
+          done
+          echo "Frontend did not become reachable within the timeout." >&2
+          exit 1

@@ -208,3 +208,41 @@ describe("Flow: deleteDriver — active-job guard", () => {
     expect(res.body.message).toMatch(/archived/i);
   });
 });
+
+describe("Flow: getAllDrivers — admin accounts never appear in the Drivers list", () => {
+  test("PASS: GET /api/admin/drivers returns only role:driver accounts, not the admins that share the collection", async () => {
+    const admin = await createDriver({ role: "admin" });
+    await createDriver({ role: "admin" });
+    const driverA = await createDriver({ role: "driver" });
+    const driverB = await createDriver({ role: "driver" });
+
+    const res = await request(app)
+      .get("/api/admin/drivers")
+      .set("Authorization", authHeader(admin));
+
+    expect(res.status).toBe(200);
+    expect(res.body.pagination.total).toBe(2);
+    const returnedIds = res.body.data.map((d) => d._id).sort();
+    expect(returnedIds).toEqual([driverA._id.toString(), driverB._id.toString()].sort());
+    expect(res.body.data.every((d) => d.role === "driver")).toBe(true);
+  });
+});
+
+describe("Flow: getSystemStats — admin accounts never counted in totalDrivers", () => {
+  test("PASS: GET /api/admin/stats totalDrivers matches only role:driver accounts", async () => {
+    const admin = await createDriver({ role: "admin" });
+    await createDriver({ role: "admin" });
+    await createDriver({ role: "driver" });
+    await createDriver({ role: "driver" });
+    await createDriver({ role: "driver" });
+
+    const res = await request(app)
+      .get("/api/admin/stats")
+      .set("Authorization", authHeader(admin));
+
+    expect(res.status).toBe(200);
+    // 3 real drivers seeded, not 5 (which is what it'd be if the 2 admins
+    // were counted too).
+    expect(res.body.data.totalDrivers).toBe(3);
+  });
+});

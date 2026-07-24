@@ -148,13 +148,42 @@ module.exports = {
     get: {
       tags: ["Drivers"],
       summary: "Date-scoped aggregate stats for the admin dashboard",
-      description: '"Today" and "this week" are defined by the `date` query param\'s local calendar date, not the server\'s timezone — pass the admin\'s own local "today". Falls back to the server\'s current UTC date if omitted/invalid. Week is Monday-start.',
+      description:
+        '"Today" and "this week" are defined by the `date` query param\'s local calendar date, not the server\'s timezone — pass the admin\'s own local "today". Falls back to the server\'s current UTC date if omitted/invalid. Week is Monday-start. ' +
+        "`todaysJobs`/`completedToday`/`pendingJobs` are scoped to that one day; `jobsByStatus` (Phase 11) is deliberately NOT date-scoped — it's every non-archived job regardless of date, a different (broader) picture. " +
+        "`podApprovalRate` is `null` (not `0`) when no PODs have been decided yet — a real \"no data\" signal, not a fabricated rate. `invoiceReadyJobs` reuses the exact same eligibility rule as `GET /api/jobs/admin/ready-for-invoicing`, so the two numbers can never disagree.",
       security: h.bearer,
       parameters: [{ name: "date", in: "query", schema: { type: "string", format: "date" }, example: "2026-08-01" }],
       responses: {
         200: {
           description: "OK.",
-          content: { "application/json": { example: { status: "success", data: { date: "2026-08-01", todaysJobs: 6, completedToday: 2, pendingJobs: 3, totalDrivers: 14, missingWorkLogs: 4, trucksOutOfService: 1, weeklyLogs: 22, weeklyHours: 176, weeklyKilometres: 2450 } } } },
+          content: {
+            "application/json": {
+              example: {
+                status: "success",
+                data: {
+                  date: "2026-08-01",
+                  todaysJobs: 6,
+                  completedToday: 2,
+                  pendingJobs: 3,
+                  totalDrivers: 14,
+                  missingWorkLogs: 4,
+                  trucksOutOfService: 1,
+                  weeklyLogs: 22,
+                  weeklyHours: 176,
+                  weeklyKilometres: 2450,
+                  invoiceReadyJobs: 3,
+                  pendingPodApprovals: 2,
+                  pendingDiaryApprovals: 1,
+                  pendingWorkLogApprovals: 5,
+                  podApprovalRate: 92.5,
+                  truckStatusBreakdown: { available: 10, "on-route": 3, "out-of-service": 1 },
+                  jobsByStatus: { pending: 12, "in-progress": 4, completed: 88 },
+                  jobVolumeTrend: [{ date: "2026-07-19", count: 3 }, { date: "2026-07-20", count: 5 }],
+                },
+              },
+            },
+          },
         },
         401: h.unauthorized,
         403: h.forbiddenStatusEnvelope("Access denied: Admins only"),

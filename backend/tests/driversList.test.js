@@ -122,6 +122,23 @@ describe("GET /api/admin/drivers (getAllDrivers) — pagination/search/filter/so
     expect(Driver.find).toHaveBeenCalledWith(expect.objectContaining({ recordStatus: { $ne: "archived" } }));
   });
 
+  test("is always scoped to role: driver, regardless of other filters, and can't be overridden via the query string", async () => {
+    const { controller, Driver } = loadController();
+    const chain = findChain([]);
+    Driver.find.mockReturnValueOnce(chain);
+    Driver.countDocuments.mockResolvedValueOnce(0);
+
+    const res = makeResponse();
+    // Driver and admin accounts share one collection — this is the admin
+    // Drivers management list, not a general account browser, so role
+    // isn't even an accepted filter param; an attempted override must be
+    // ignored, not honored.
+    await controller.getAllDrivers({ query: { role: "admin" } }, res);
+
+    const calledQuery = Driver.find.mock.calls[0][0];
+    expect(calledQuery.role).toBe("driver");
+  });
+
   test("search: matches by name", async () => {
     const { controller, Driver } = loadController();
     const chain = findChain([]);

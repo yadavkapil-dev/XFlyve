@@ -3,6 +3,7 @@ const Job = require("../models/job");
 const Truck = require("../models/truck");
 const DailyWorkLog = require("../models/dailyWorkLog");
 const JobPod = require("../models/jobPod");
+const WorkDiary = require("../models/workDiary");
 
 const exportToExcel = require("../utils/excelExport");
 const generateZip = require("../utils/zipGenerator");
@@ -27,6 +28,12 @@ exports.getAllDrivers = async (req, res) => {
     const query = req.query.recordStatus
       ? { recordStatus: req.query.recordStatus }
       : { recordStatus: { $ne: "archived" } };
+    // Always scoped to drivers, never client-overridable — this is the admin
+    // Drivers management list, not a general Driver/admin account browser.
+    // Driver and admin accounts share one collection (see the same gap
+    // fixed in getDashboardStats), so without this an admin account would
+    // show up as a row here.
+    query.role = "driver";
 
     const searchOr = buildSearchOr(req.query.search, ["name"]);
     if (searchOr) Object.assign(query, searchOr);
@@ -120,7 +127,10 @@ exports.getSystemStats = async (req, res) => {
   try {
     const [jobCount, driverCount, truckCount, logCount] = await Promise.all([
       Job.countDocuments(),
-      Driver.countDocuments(),
+      // Same role-scoping as getDashboardStats/getAllDrivers — Driver and
+      // admin accounts share one collection, so an unscoped count here
+      // would fold admins into "Total Drivers".
+      Driver.countDocuments({ role: "driver", recordStatus: { $ne: "archived" } }),
       Truck.countDocuments(),
       DailyWorkLog.countDocuments(),
     ]);
@@ -139,6 +149,11 @@ exports.getSystemStats = async (req, res) => {
     return res.status(500).json({ status: "error", message: "Server error fetching stats" });
   }
 };
+
+// Phase 11: how many trailing days of job-volume history to return.
+// 14 days is enough to see a trend on a phone screen without the response
+// growing unbounded — this is a dashboard glance, not a reporting export.
+const JOB_VOLUME_TREND_DAYS = 14;
 
 // GET /api/admin/dashboard-stats?date=YYYY-MM-DD
 // Date-filtered aggregate stats for the admin dashboard (HomePage.jsx) —
@@ -160,18 +175,68 @@ exports.getDashboardStats = async (req, res) => {
 
     const { weekStart, weekEnd } = getMondayStartWeekRange(today);
 
-    const [jobStatusToday, totalDrivers, driverIdsWithLogToday, trucksOutOfService, weeklyLogAgg] = await Promise.all([
+    const trendStart = new Date(today);
+    trendStart.setUTCDate(trendStart.getUTCDate() - (JOB_VOLUME_TREND_DAYS - 1));
+
+    const [
+      jobStatusToday,
+      totalDrivers,
+      driverIdsWithLogToday,
+      trucksOutOfService,
+      weeklyLogAgg,
+      truckStatusAgg,
+      jobsByStatusAgg,
+      jobVolumeAgg,
+      podStatusAgg,
+      pendingDiaryApprovals,
+      pendingWorkLogApprovals,
+      invoiceReadyJobs,
+    ] = await Promise.all([
       Job.aggregate([
         { $match: { jobDate: { $gte: today, $lt: tomorrow }, recordStatus: { $ne: "archived" } } },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
-      Driver.countDocuments({ recordStatus: { $ne: "archived" } }),
+      // role: "driver" — Driver and admin accounts share one collection, and
+      // an unscoped count here would silently fold admins into "Total
+      // Drivers" (and therefore into missingWorkLogs' totalDrivers -
+      // driverIdsWithLogToday.length subtraction below, since admins never
+      // submit work logs). driverIdsWithLogToday itself doesn't need this
+      // same filter: DailyWorkLog is only ever written by createWorkLog,
+      // which is gated to role "driver", so it can't contain an admin's ID.
+      Driver.countDocuments({ role: "driver", recordStatus: { $ne: "archived" } }),
       DailyWorkLog.distinct("driverId", { date: { $gte: today, $lt: tomorrow } }),
       Truck.countDocuments({ recordStatus: { $ne: "archived" }, status: { $in: ["out-of-service", "maintenance"] } }),
       DailyWorkLog.aggregate([
         { $match: { date: { $gte: weekStart, $lt: weekEnd } } },
         { $group: { _id: null, count: { $sum: 1 }, hours: { $sum: "$hours" }, kilometers: { $sum: "$kilometers" } } },
       ]),
+      // Fleet-wide status breakdown (available/on-route/out-of-service) —
+      // real Truck.status values, not an estimate.
+      Truck.aggregate([
+        { $match: { recordStatus: { $ne: "archived" } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      // All non-archived jobs by status, regardless of date — a broader
+      // "current operational load" picture than todaysJobs/pendingJobs
+      // above, which are both scoped to today only.
+      Job.aggregate([
+        { $match: { recordStatus: { $ne: "archived" } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      Job.aggregate([
+        { $match: { jobDate: { $gte: trendStart, $lt: tomorrow }, recordStatus: { $ne: "archived" } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$jobDate" } }, count: { $sum: 1 } } },
+      ]),
+      JobPod.aggregate([
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      WorkDiary.countDocuments({ status: "pending" }),
+      DailyWorkLog.countDocuments({ status: "pending" }),
+      // Reuses the exact same business rule the real "ready to invoice" list
+      // uses (Job.findReadyForInvoicing, unit-tested in Phase 7A) rather
+      // than re-deriving local/interstate/POD/diary eligibility here a
+      // second time — this count must never disagree with that list.
+      Job.findReadyForInvoicing(),
     ]);
 
     const jobCounts = jobStatusToday.reduce((acc, { _id, count }) => {
@@ -180,6 +245,36 @@ exports.getDashboardStats = async (req, res) => {
     }, {});
     const todaysJobs = Object.values(jobCounts).reduce((sum, count) => sum + count, 0);
     const weekly = weeklyLogAgg[0] || { count: 0, hours: 0, kilometers: 0 };
+
+    const truckStatusBreakdown = { available: 0, "on-route": 0, "out-of-service": 0 };
+    truckStatusAgg.forEach(({ _id, count }) => {
+      if (_id in truckStatusBreakdown) truckStatusBreakdown[_id] = count;
+    });
+
+    const jobsByStatus = { pending: 0, "in-progress": 0, completed: 0 };
+    jobsByStatusAgg.forEach(({ _id, count }) => {
+      if (_id in jobsByStatus) jobsByStatus[_id] = count;
+    });
+
+    const jobVolumeByDate = jobVolumeAgg.reduce((acc, { _id, count }) => {
+      acc[_id] = count;
+      return acc;
+    }, {});
+    const jobVolumeTrend = Array.from({ length: JOB_VOLUME_TREND_DAYS }, (_, i) => {
+      const d = new Date(trendStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      const dateKey = d.toISOString().slice(0, 10);
+      return { date: dateKey, count: jobVolumeByDate[dateKey] || 0 };
+    });
+
+    const podCounts = podStatusAgg.reduce((acc, { _id, count }) => {
+      acc[_id] = count;
+      return acc;
+    }, {});
+    const decidedPods = (podCounts.approved || 0) + (podCounts.rejected || 0);
+    // null (not 0) when nothing has been decided yet — a real "no data",
+    // not a fabricated "0% approval rate".
+    const podApprovalRate = decidedPods > 0 ? Math.round(((podCounts.approved || 0) / decidedPods) * 1000) / 10 : null;
 
     return res.status(200).json({
       status: "success",
@@ -194,6 +289,14 @@ exports.getDashboardStats = async (req, res) => {
         weeklyLogs: weekly.count || 0,
         weeklyHours: weekly.hours || 0,
         weeklyKilometres: weekly.kilometers || 0,
+        invoiceReadyJobs: invoiceReadyJobs.length,
+        pendingPodApprovals: podCounts.pending || 0,
+        pendingDiaryApprovals,
+        pendingWorkLogApprovals,
+        podApprovalRate,
+        truckStatusBreakdown,
+        jobsByStatus,
+        jobVolumeTrend,
       },
     });
   } catch (err) {

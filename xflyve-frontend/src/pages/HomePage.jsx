@@ -13,6 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import { BarChart, LineChart, PieChart } from "@mui/x-charts";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getDashboardStats } from "../api";
@@ -63,6 +64,14 @@ const emptyDashboard = {
   weeklyLogs: 0,
   weeklyHours: 0,
   weeklyKilometres: 0,
+  invoiceReadyJobs: 0,
+  pendingPodApprovals: 0,
+  pendingDiaryApprovals: 0,
+  pendingWorkLogApprovals: 0,
+  podApprovalRate: null,
+  truckStatusBreakdown: { available: 0, "on-route": 0, "out-of-service": 0 },
+  jobsByStatus: { pending: 0, "in-progress": 0, completed: 0 },
+  jobVolumeTrend: [],
 };
 
 const DashboardSection = ({ title, subtitle, children }) => (
@@ -383,6 +392,31 @@ const SummaryRow = ({ label, value, helper }) => (
       {value}
     </Typography>
   </Stack>
+);
+
+const ChartCard = ({ title, helper, children }) => (
+  <Paper
+    elevation={0}
+    sx={{
+      p: { xs: 2, sm: 2.5 },
+      borderRadius: { xs: 4, sm: 5 },
+      border: "1px solid",
+      borderColor: palette.line,
+      bgcolor: palette.panel,
+      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
+      height: "100%",
+    }}
+  >
+    <Typography variant="subtitle1" fontWeight={880} sx={{ color: palette.ink, letterSpacing: "-0.025em" }}>
+      {title}
+    </Typography>
+    {helper && (
+      <Typography variant="caption" sx={{ color: palette.muted, display: "block", mb: 1 }}>
+        {helper}
+      </Typography>
+    )}
+    <Box sx={{ mt: 1 }}>{children}</Box>
+  </Paper>
 );
 
 const HomePage = () => {
@@ -747,12 +781,31 @@ const HomePage = () => {
                 >
                   <Stack spacing={1.5} sx={{ height: "100%" }}>
                     <AttentionCard
-                      title="Missing PODs"
-                      value="—"
-                      description="Placeholder until POD uploads are linked directly to jobs."
+                      title="Pending POD Approvals"
+                      value={dashboard.pendingPodApprovals}
+                      description="Uploaded proof-of-delivery awaiting your review."
                       icon={<Inventory2OutlinedIcon />}
-                      actionLabel="Open POD records"
+                      actionLabel="Review PODs"
                       onClick={() => navigate("/pods")}
+                      tone={dashboard.pendingPodApprovals > 0 ? "warning" : "success"}
+                    />
+                    <AttentionCard
+                      title="Pending Work Diary Approvals"
+                      value={dashboard.pendingDiaryApprovals}
+                      description="Interstate compliance diaries awaiting your review."
+                      icon={<DescriptionOutlinedIcon />}
+                      actionLabel="Review work diaries"
+                      onClick={() => navigate("/work-diary")}
+                      tone={dashboard.pendingDiaryApprovals > 0 ? "warning" : "success"}
+                    />
+                    <AttentionCard
+                      title="Pending Work Log Approvals"
+                      value={dashboard.pendingWorkLogApprovals}
+                      description="Submitted daily work logs awaiting your review."
+                      icon={<FactCheckIcon />}
+                      actionLabel="Review work logs"
+                      onClick={() => navigate("/logs")}
+                      tone={dashboard.pendingWorkLogApprovals > 0 ? "warning" : "success"}
                     />
                     <AttentionCard
                       title="Missing Work Logs"
@@ -810,13 +863,76 @@ const HomePage = () => {
                     />
                     <SummaryRow
                       label="Ready to Invoice"
-                      value="—"
-                      helper="Placeholder until invoice-ready status exists"
+                      value={dashboard.invoiceReadyJobs}
+                      helper="Completed jobs with approved documents"
+                    />
+                    <SummaryRow
+                      label="POD Approval Rate"
+                      value={dashboard.podApprovalRate === null ? "—" : `${dashboard.podApprovalRate}%`}
+                      helper={dashboard.podApprovalRate === null ? "No PODs decided yet" : "Approved vs. rejected, all time"}
                     />
                   </Paper>
                 </DashboardSection>
               </Box>
             </Box>
+
+            <DashboardSection
+              title="Operational Trends"
+              subtitle="Real counts straight from the database — no estimates."
+            >
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", lg: "repeat(3, minmax(0, 1fr))" },
+                  gap: { xs: 2, sm: 2.5 },
+                  alignItems: "stretch",
+                }}
+              >
+                <ChartCard title="Job Volume Trend" helper="Jobs scheduled per day, last 14 days">
+                  <LineChart
+                    dataset={dashboard.jobVolumeTrend}
+                    xAxis={[
+                      {
+                        dataKey: "date",
+                        scaleType: "band",
+                        valueFormatter: (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" }),
+                      },
+                    ]}
+                    series={[{ dataKey: "count", label: "Jobs", color: palette.blue }]}
+                    height={260}
+                  />
+                </ChartCard>
+
+                <ChartCard title="Jobs by Status" helper="All active jobs, any date">
+                  <PieChart
+                    series={[
+                      {
+                        data: [
+                          { id: 0, value: dashboard.jobsByStatus.pending, label: "Pending", color: palette.amber },
+                          { id: 1, value: dashboard.jobsByStatus["in-progress"], label: "In Progress", color: palette.blue },
+                          { id: 2, value: dashboard.jobsByStatus.completed, label: "Completed", color: palette.emerald },
+                        ],
+                        innerRadius: 40,
+                      },
+                    ]}
+                    height={260}
+                  />
+                </ChartCard>
+
+                <ChartCard title="Fleet Status" helper="Current truck status breakdown">
+                  <BarChart
+                    dataset={[
+                      { status: "Available", count: dashboard.truckStatusBreakdown.available },
+                      { status: "On Route", count: dashboard.truckStatusBreakdown["on-route"] },
+                      { status: "Out of Service", count: dashboard.truckStatusBreakdown["out-of-service"] },
+                    ]}
+                    xAxis={[{ dataKey: "status", scaleType: "band" }]}
+                    series={[{ dataKey: "count", label: "Trucks", color: palette.teal }]}
+                    height={260}
+                  />
+                </ChartCard>
+              </Box>
+            </DashboardSection>
 
             <DashboardSection
               title="Quick Actions"

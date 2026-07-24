@@ -48,6 +48,10 @@ afterAll(async () => {
 });
 
 const fakePdf = () => Buffer.from("%PDF-1.4 fake content");
+// Claims application/pdf (a client-controlled, trivially-spoofed header)
+// but the actual bytes aren't a PDF — tests the real magic-byte check in
+// middlewares/validateFileSignature.js, not just the mimetype filter.
+const fakeNonPdfWithSpoofedMimetype = () => Buffer.from("this is not a pdf file at all");
 
 describe("Flow: POD workflow", () => {
   test("PASS: driver uploads a POD -> admin approves it, end to end through real HTTP, with notification + activity side effects", async () => {
@@ -137,6 +141,23 @@ describe("Flow: POD workflow", () => {
 
     expect(res.status).toBe(403);
   });
+
+  test("PASS: a file claiming to be a PDF (mimetype + .pdf filename) but whose actual bytes aren't one is rejected (400), never reaches Cloudinary or the DB", async () => {
+    const driver = await createDriver({ role: "driver" });
+    const job = await createJob({ assignedTo: driver });
+
+    const res = await request(app)
+      .post("/api/jobpods/upload")
+      .set("Authorization", authHeader(driver))
+      .field("jobId", job._id.toString())
+      .attach("podFile", fakeNonPdfWithSpoofedMimetype(), { filename: "pod.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/not a valid pdf/i);
+
+    const stored = await JobPod.findOne({ jobId: job._id }).lean();
+    expect(stored).toBeNull();
+  });
 });
 
 describe("Flow: Diary workflow", () => {
@@ -200,6 +221,23 @@ describe("Flow: Diary workflow", () => {
     expect(editRes.status).toBe(200);
     expect(editRes.body.data.status).toBe("pending");
     expect(editRes.body.data.rejectionReason).toBeUndefined();
+  });
+
+  test("PASS: a work diary upload with a spoofed PDF mimetype but non-PDF bytes is rejected (400)", async () => {
+    const driver = await createDriver({ role: "driver" });
+    const job = await createJob({ assignedTo: driver, jobType: "interstate" });
+
+    const res = await request(app)
+      .post("/api/workDiaries/upload")
+      .set("Authorization", authHeader(driver))
+      .field("jobId", job._id.toString())
+      .attach("workDiaryFile", fakeNonPdfWithSpoofedMimetype(), { filename: "diary.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/not a valid pdf/i);
+
+    const stored = await WorkDiary.findOne({ jobId: job._id }).lean();
+    expect(stored).toBeNull();
   });
 });
 

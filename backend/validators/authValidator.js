@@ -33,6 +33,18 @@ exports.loginValidator = [
   body("password").trim().notEmpty().withMessage("Password is required"),
 ];
 
+exports.forgotPasswordValidator = [
+  body("email").trim().normalizeEmail().isEmail().withMessage("Valid email is required"),
+];
+
+exports.resetPasswordValidator = [
+  body("token").trim().notEmpty().withMessage("Reset token is required"),
+  body("password")
+    .trim()
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters"),
+];
+
 // New driver creation validator (for admin create driver)
 exports.driverCreationValidator = [
   body("name").trim().notEmpty().withMessage("Name is required").escape(),

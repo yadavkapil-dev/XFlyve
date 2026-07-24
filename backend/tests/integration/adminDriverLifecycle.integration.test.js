@@ -6,6 +6,7 @@
 // (see testDb.js).
 process.env.JWT_SECRET = "integration-test-secret";
 process.env.RATE_LIMIT_MAX = "10000";
+process.env.LOGIN_RATE_LIMIT_MAX = "10000";
 process.env.NODE_ENV = "test";
 
 const request = require("supertest");

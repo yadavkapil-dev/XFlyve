@@ -8,6 +8,7 @@ const {
   requireDriverOrAdmin, // import the new middleware
 } = require("../middlewares/roleMiddleware");
 const upload = require("../config/multer");
+const { requirePdfSignature } = require("../middlewares/validateFileSignature");
 const workDiaryController = require("../controllers/workDiaryController");
 const {
   uploadWorkDiaryValidator,
@@ -44,6 +45,7 @@ router.post(
   "/upload",
   requireDriver,
   upload.single("workDiaryFile"),
+  requirePdfSignature,
   ...uploadWorkDiaryValidator,
   validateRequest,
   workDiaryController.uploadWorkDiary

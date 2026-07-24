@@ -10,7 +10,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 const helmet = require("helmet");
 const compression = require("compression");
-const rateLimit = require("express-rate-limit");
+const { apiLimiter } = require("./config/rateLimiters");
 const logger = require("./utils/logger");
 const { Sentry, isSentryEnabled } = require("./config/sentry");
 const requestId = require("./middlewares/requestId");
@@ -31,27 +31,18 @@ const activityRoutes = require("./routes/activityRoutes");
 const app = express();
 app.disable("x-powered-by");
 
+// Render puts exactly one reverse proxy in front of this app. Trusting one
+// hop means req.ip (and X-Forwarded-For parsing generally) resolves to the
+// real client IP that proxy forwarded, not the proxy's own address — this
+// is what the rate limiters below key off of, so without it every request
+// would appear to come from the same IP.
+app.set("trust proxy", 1);
+
 // Correlation ID: accept an inbound X-Request-Id or generate one, expose it
 // on the response header, and make it available to logger/error handling.
 app.use(requestId);
 
-// Rate limiter. `max` is configurable via RATE_LIMIT_MAX purely so
-// integration tests (which can send well over 100 requests across a single
-// suite run) don't trip the same limit real traffic would — the default
-// (unset) behavior is byte-for-byte what production already had.
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: Number(process.env.RATE_LIMIT_MAX) || 100,
-  handler: (req, res) => {
-    res.status(429).json({
-      success: false,
-      message: "Too many requests, please try again later.",
-      retryAfter: 15 * 60,
-    });
-  },
-});
-
-app.use(limiter);
+app.use(apiLimiter);
 
 // CORS
 const allowedOrigins = (process.env.CORS_WHITELIST || process.env.FRONTEND_URL || "")

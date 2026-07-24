@@ -8,6 +8,7 @@ const {
   requireDriverOrAdmin,
 } = require("../middlewares/roleMiddleware");
 const upload = require("../config/multer"); // multer
+const { requirePdfSignature } = require("../middlewares/validateFileSignature");
 const jobPodController = require("../controllers/jobPodController");
 const validateRequest = require("../middlewares/validateRequest");
 const {
@@ -44,6 +45,7 @@ router.post(
   "/upload",
   requireDriver,
   upload.single("podFile"),
+  requirePdfSignature,
   ...uploadPODValidator,
   validateRequest,
   jobPodController.uploadPOD

@@ -65,6 +65,19 @@ const driverSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Password reset — only ever a SHA-256 hash of the emailed token, never
+    // the raw token itself, so a database read (or leak) can't be used to
+    // reset the account. select: false keeps it out of default query
+    // results (e.g. getProfile's Driver.findById) without needing every
+    // caller to remember to .select("-resetPasswordTokenHash").
+    resetPasswordTokenHash: {
+      type: String,
+      select: false,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt fields

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -7,6 +7,7 @@ import {
   Chip,
   Container,
   InputAdornment,
+  Link,
   Paper,
   Stack,
   TextField,
@@ -20,12 +21,15 @@ import { useAuth } from "../../contexts/AuthContext";
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loginUser } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Set by ResetPasswordPage's redirect after a successful password reset.
+  const [infoMessage, setInfoMessage] = useState(location.state?.message || "");
 
   useEffect(() => {
     if (user) {
@@ -171,6 +175,16 @@ const LoginPage = () => {
             </Typography>
           </Stack>
 
+          {infoMessage && (
+            <Alert
+              severity="success"
+              sx={{ mb: 2.5, borderRadius: "16px", fontSize: "0.9rem" }}
+              onClose={() => setInfoMessage("")}
+            >
+              {infoMessage}
+            </Alert>
+          )}
+
           {error && (
             <Alert
               severity="error"
@@ -237,6 +251,16 @@ const LoginPage = () => {
                   },
                 }}
               />
+
+              <Box sx={{ textAlign: "right" }}>
+                <Link
+                  component={RouterLink}
+                  to="/forgot-password"
+                  sx={{ color: "#0F766E", fontWeight: 800, fontSize: "0.88rem" }}
+                >
+                  Forgot password?
+                </Link>
+              </Box>
 
               <Button
                 type="submit"

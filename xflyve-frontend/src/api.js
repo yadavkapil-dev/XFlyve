@@ -43,6 +43,8 @@ api.interceptors.response.use(
 export const login = (credentials) => api.post("/auth/login", credentials);
 export const signup = (userData) => api.post("/auth/signup", userData);
 export const getProfile = () => api.get("/auth/profile"); // Requires authMiddleware in backend
+export const forgotPassword = (email) => api.post("/auth/forgot-password", { email });
+export const resetPassword = (token, password) => api.post("/auth/reset-password", { token, password });
 
 // ===== ADMIN ROUTES =====
 // params: { page, limit, sort, search, driverType, recordStatus }

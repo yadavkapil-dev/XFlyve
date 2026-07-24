@@ -19,6 +19,21 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+    # CI has no backend/.env (gitignored, never checked out). validateEnv.js
+    # unconditionally requires MONGO_URI and JWT_SECRET; CLOUDINARY_* and
+    # CORS_WHITELIST/FRONTEND_URL are only required when NODE_ENV=production
+    # (see backend/config/validateEnv.js), so setting NODE_ENV=test — same
+    # as every test file already sets internally — means those aren't
+    # needed here at all. Only healthz.test.js actually boots real
+    # server.js/validateEnv.js; every other test file sets its own
+    # MONGO_URI/JWT_SECRET/NODE_ENV already, so these are harmlessly
+    # overridden per-file where that happens. Dummy, non-functional values
+    # only — mongodb-memory-server and mocked Cloudinary are what the tests
+    # actually use, this MONGO_URI is never connected to.
+    env:
+      MONGO_URI: mongodb://localhost:27017/ci-placeholder
+      JWT_SECRET: ci-test-jwt-secret
+      NODE_ENV: test
 
     steps:
       - name: Checkout code
@@ -54,6 +69,16 @@ jobs:
 
   # ===========================================================================
   # Frontend: lint, Vitest, production build.
+  #
+  # Node 20 here specifically (backend/e2e stay on 18, matching the
+  # Dockerfiles' node:18-alpine and backend's engines: >=18.0.0 — there's no
+  # reason to bump those). Vitest's jsdom environment pulls in
+  # html-encoding-sniffer, whose current version is ESM-only and requires
+  # Node ^20.19.0 || ^22.12.0 || >=24.0.0 (checked its package.json engines
+  # field directly) — Node 18 throws ERR_REQUIRE_ESM trying to require() it.
+  # jsdom is a test-only dependency: `vite build` (what the Docker image
+  # actually runs) never touches it, so this doesn't affect the production
+  # build or runtime at all, only this test step.
   # ===========================================================================
   frontend:
     name: Frontend tests + build
@@ -66,7 +91,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           cache: "npm"
           cache-dependency-path: xflyve-frontend/package-lock.json
 

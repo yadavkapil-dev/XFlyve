@@ -10,6 +10,9 @@ const { startTestDb, stopTestDb, clearTestDb } = require("./testDb");
 const { createDriver, createTruck, createJob, tomorrow, authHeader } = require("./factories");
 const Truck = require("../../models/truck");
 const Job = require("../../models/job");
+const DailyTruckAssignment = require("../../models/dailyTruckAssignment");
+
+const startOfDay = (date) => new Date(date.toISOString().slice(0, 10) + "T00:00:00.000Z");
 
 let app;
 
@@ -180,5 +183,43 @@ describe("Flow: Truck consistency", () => {
       .send({ status: "in-progress" });
 
     expect(startB.status).toBe(409);
+  });
+});
+
+describe("Flow: truck archival", () => {
+  test("PASS: a truck whose only truck-assignment record is in the past can still be archived", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck();
+
+    const pastDate = startOfDay(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000));
+    await DailyTruckAssignment.create({ truckId: truck._id, driverId: driver._id, date: pastDate });
+
+    const res = await request(app)
+      .delete(`/api/admin/trucks/${truck._id}`)
+      .set("Authorization", authHeader(admin));
+
+    expect(res.status).toBe(200);
+    const persisted = await Truck.findById(truck._id).lean();
+    expect(persisted.recordStatus).toBe("archived");
+  });
+
+  test("PASS: a truck with a current (today-dated) truck-assignment record cannot be archived (409)", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck();
+
+    const todayDate = startOfDay(new Date());
+    await DailyTruckAssignment.create({ truckId: truck._id, driverId: driver._id, date: todayDate });
+
+    const res = await request(app)
+      .delete(`/api/admin/trucks/${truck._id}`)
+      .set("Authorization", authHeader(admin));
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/referenced by active jobs or assignments/i);
+
+    const persisted = await Truck.findById(truck._id).lean();
+    expect(persisted.recordStatus).not.toBe("archived");
   });
 });

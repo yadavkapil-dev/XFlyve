@@ -192,9 +192,17 @@ exports.deleteTruck = async (req, res) => {
   }
 
   try {
+    const startOfToday = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
+
     const [activeJob, assignment] = await Promise.all([
       Job.exists({ assignedTruck: truckId, status: { $in: ["pending", "in-progress"] }, recordStatus: { $ne: "archived" } }),
-      TruckAssignment.exists({ truckId }),
+      // date-scoped to today-or-later — a truck assignment is a one-day
+      // booking (see assignTruck's own date-keyed conflict checks), not a
+      // permanent binding. Deliberately NOT an unscoped exists({ truckId }):
+      // that would match any assignment ever made for this truck, including
+      // ones whose date has long passed, and permanently block archiving a
+      // truck that's had zero current activity for months.
+      TruckAssignment.exists({ truckId, date: { $gte: startOfToday } }),
     ]);
 
     if (activeJob || assignment) {

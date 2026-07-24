@@ -78,7 +78,7 @@ module.exports = {
       tags: ["Trucks"],
       summary: "Archive a truck (admin only)",
       description:
-        'Soft-delete. Blocked (409) if the truck is referenced by any active (pending/in-progress) job, **or by any truck-assignment record at all — including ones from the past, with no date scoping**. Flagged during the Phase 10 audit: a truck that was ever assigned even once, long ago, may never be archivable again through this endpoint — worth confirming whether that\'s intentional.',
+        "Soft-delete. Blocked (409) if the truck is referenced by any active (pending/in-progress) job, or by a truck-assignment record dated today or later. (Previously this checked for *any* truck-assignment record ever, including ones from the past — flagged during the Phase 10 audit and fixed to be date-scoped, matching how assignTruck itself treats assignments as one-day bookings, not permanent bindings.)",
       security: h.bearer,
       parameters: [{ name: "truckId", in: "path", required: true, schema: { type: "string" }, example: FAKE_TRUCK_ID }],
       responses: {

@@ -15,6 +15,7 @@ const { buildSearchOr } = require("../utils/search");
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
+const { sendJobAssignedEmail } = require("../services/emailService");
 
 const JOB_SORT_FIELDS = ["jobDate", "createdAt", "status", "title"];
 const JOB_DEFAULT_SORT = { jobDate: 1 };
@@ -166,6 +167,18 @@ exports.createJob = async (req, res) => {
       resourceType: "job",
       resourceId: newJob._id,
     });
+
+    // In addition to the in-app notification above, not a replacement for
+    // it. Fire-and-forget, same contract as sendPasswordResetEmail — never
+    // awaited, failures are logged inside the email service and never
+    // propagate here. Wrapped here too (unlike sendPasswordResetEmail's own
+    // call site) so even an unexpected synchronous throw can't turn this
+    // already-successful Job.create() into a reported failure.
+    try {
+      sendJobAssignedEmail(driver.email, newJob);
+    } catch (err) {
+      logger.error("Failed to send job assigned email: %o", err);
+    }
 
     await logActivity({
       actorId: req.user.id,
@@ -445,10 +458,14 @@ exports.updateJob = async (req, res) => {
       }
     }
 
-    // Admin can update all fields; validate assignedTo if provided
+    // Admin can update all fields; validate assignedTo if provided. Hoisted
+    // out of this block (not const-scoped inside the `if`) so the
+    // reassignment-email branch further below can reuse the same fetched
+    // driver doc instead of a second lookup.
+    let assignedDriver;
     if (assignedTo) {
-      const driver = await Driver.findById(assignedTo).lean();
-      if (!driver) {
+      assignedDriver = await Driver.findById(assignedTo).lean();
+      if (!assignedDriver) {
         return res.status(404).json({ status: "fail", message: "Driver not found" });
       }
     }
@@ -543,6 +560,18 @@ exports.updateJob = async (req, res) => {
         resourceType: "job",
         resourceId: job._id,
       });
+
+      // In addition to the in-app notification above, not a replacement.
+      // assignedDriver was already fetched above when validating assignedTo
+      // — reassignment can only reach this branch when assignedTo was
+      // provided, so it's always populated here. Wrapped so an unexpected
+      // synchronous throw can't turn this already-successful job.save()
+      // into a reported failure.
+      try {
+        sendJobAssignedEmail(assignedDriver.email, job);
+      } catch (err) {
+        logger.error("Failed to send job assigned email: %o", err);
+      }
 
       await logActivity({
         actorId: user.id,

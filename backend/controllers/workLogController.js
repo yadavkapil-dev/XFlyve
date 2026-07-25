@@ -1,11 +1,13 @@
 const mongoose = require("mongoose");
 const DailyWorkLog = require("../models/dailyWorkLog");
 const Job = require("../models/job");
+const Driver = require("../models/driver");
 const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter, normalizeDateOnly: normalizeQueryDate, getMondayStartWeekRange } = require("../utils/dateRange");
 const { notifyUser, notifyAdmins } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
+const { sendDocumentRejectedEmail } = require("../services/emailService");
 
 const WORKLOG_SORT_FIELDS = ["workDate", "date", "createdAt"];
 const WORKLOG_DEFAULT_SORT = { workDate: -1, date: -1 };
@@ -485,6 +487,19 @@ exports.rejectWorkLog = async (req, res) => {
       resourceType: "worklog",
       resourceId: log._id,
     });
+
+    // In addition to the in-app notification above, not a replacement.
+    // Own try/catch so a failure here (the driver lookup or the send
+    // itself) can never turn an already-successful rejection into a
+    // failed response — the log.save() above has already committed.
+    try {
+      const rejectedDriver = await Driver.findById(log.driverId).select("email").lean();
+      if (rejectedDriver?.email) {
+        sendDocumentRejectedEmail(rejectedDriver.email, { documentType: "worklog", reason: rejectionReason });
+      }
+    } catch (err) {
+      logger.error("Failed to send work log rejected email: %o", err);
+    }
 
     await logActivity({
       actorId: req.user.id,

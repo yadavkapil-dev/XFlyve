@@ -1,5 +1,6 @@
 const WorkDiary = require("../models/workDiary");
 const Job = require("../models/job");
+const Driver = require("../models/driver");
 const mongoose = require("mongoose");
 const { Readable } = require("stream");
 const logger = require("../utils/logger");
@@ -9,6 +10,7 @@ const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pa
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser, notifyAdmins } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
+const { sendDocumentRejectedEmail } = require("../services/emailService");
 
 const DIARY_HISTORY_DAYS = 30;
 const DIARY_SORT_FIELDS = ["uploadDate", "createdAt", "workDate"];
@@ -431,6 +433,19 @@ exports.rejectWorkDiary = async (req, res) => {
       resourceType: "workdiary",
       resourceId: workDiary._id,
     });
+
+    // In addition to the in-app notification above, not a replacement.
+    // Own try/catch so a failure here (the driver lookup or the send
+    // itself) can never turn an already-successful rejection into a
+    // failed response — the workDiary.save() above has already committed.
+    try {
+      const rejectedDriver = await Driver.findById(workDiary.driverId).select("email").lean();
+      if (rejectedDriver?.email) {
+        sendDocumentRejectedEmail(rejectedDriver.email, { documentType: "diary", reason: rejectionReason });
+      }
+    } catch (err) {
+      logger.error("Failed to send work diary rejected email: %o", err);
+    }
 
     await logActivity({
       actorId: req.user.id,

@@ -126,7 +126,10 @@ describe("Activity: job create/update (jobController)", () => {
     jest.doMock("../models/job", () => Job);
     jest.doMock("../models/driver", () => Driver);
     jest.doMock("../models/truck", () => Truck);
-    jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
+    // .warn included: createJob/updateJob's job-assigned email hits this
+    // branch whenever RESEND_API_KEY is unset (the case here), same as in
+    // any other test env.
+    jest.doMock("../utils/logger", () => ({ error: jest.fn(), warn: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
 

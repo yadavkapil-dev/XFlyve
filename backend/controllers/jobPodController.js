@@ -1,5 +1,6 @@
 const JobPod = require("../models/jobPod");
 const Job = require("../models/job");
+const Driver = require("../models/driver");
 const mongoose = require("mongoose");
 const { Readable } = require("stream");
 const logger = require("../utils/logger");
@@ -9,6 +10,7 @@ const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pa
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser, notifyAdmins } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
+const { sendDocumentRejectedEmail } = require("../services/emailService");
 
 const POD_HISTORY_DAYS = 30;
 const POD_SORT_FIELDS = ["uploadDate", "createdAt"];
@@ -410,6 +412,19 @@ exports.rejectPOD = async (req, res) => {
       resourceType: "jobpod",
       resourceId: pod._id,
     });
+
+    // In addition to the in-app notification above, not a replacement.
+    // Own try/catch so a failure here (the driver lookup or the send
+    // itself) can never turn an already-successful rejection into a
+    // failed response — the pod.save() above has already committed.
+    try {
+      const rejectedDriver = await Driver.findById(pod.driverId).select("email").lean();
+      if (rejectedDriver?.email) {
+        sendDocumentRejectedEmail(rejectedDriver.email, { documentType: "pod", reason: rejectionReason });
+      }
+    } catch (err) {
+      logger.error("Failed to send POD rejected email: %o", err);
+    }
 
     await logActivity({
       actorId: req.user.id,

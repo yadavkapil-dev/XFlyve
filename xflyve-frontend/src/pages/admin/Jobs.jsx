@@ -262,7 +262,7 @@ const Jobs = () => {
           <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
             <Box>
               <Chip label="Job Management" size="small" sx={{ mb: 1.5, color: "white", bgcolor: alpha("#fff", 0.12), fontWeight: 850 }} />
-              <Typography variant="h4" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>Operations Board</Typography>
+              <Typography variant="h4" component="h1" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>Operations Board</Typography>
               <Typography sx={{ mt: 1, color: alpha("#fff", 0.74), lineHeight: 1.6 }}>Manage active runs, drivers, trucks and delivery status from one mobile-friendly view.</Typography>
             </Box>
             <Button variant="contained" size="large" startIcon={<AddIcon />} onClick={() => navigate("/jobs/create")} sx={{ minHeight: 54, borderRadius: 3, bgcolor: "white", color: palette.ink, fontWeight: 950, px: 2.5, "&:hover": { bgcolor: alpha("#fff", 0.9) } }}>

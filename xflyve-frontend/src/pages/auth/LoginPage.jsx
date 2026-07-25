@@ -60,6 +60,7 @@ const LoginPage = () => {
 
   return (
     <Box
+      component="main"
       sx={{
         minHeight: "100vh",
         overflowX: "hidden",
@@ -161,6 +162,7 @@ const LoginPage = () => {
             </Box>
             <Typography
               variant="h4"
+              component="h1"
               sx={{
                 fontWeight: 950,
                 letterSpacing: "-0.045em",
@@ -302,7 +304,7 @@ const LoginPage = () => {
           >
             <Typography
               sx={{
-                color: "#64748B",
+                color: "#475569",
                 fontSize: "0.86rem",
                 lineHeight: 1.55,
                 textAlign: "center",

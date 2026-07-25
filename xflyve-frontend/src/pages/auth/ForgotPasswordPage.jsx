@@ -48,6 +48,7 @@ const ForgotPasswordPage = () => {
 
   return (
     <Box
+      component="main"
       sx={{
         minHeight: "100vh",
         overflowX: "hidden",
@@ -89,6 +90,7 @@ const ForgotPasswordPage = () => {
             </Box>
             <Typography
               variant="h4"
+              component="h1"
               sx={{
                 fontWeight: 950,
                 letterSpacing: "-0.045em",

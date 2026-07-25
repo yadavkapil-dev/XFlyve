@@ -18,6 +18,7 @@ import { resetPassword } from "../../api";
 
 const CardShell = ({ children }) => (
   <Box
+    component="main"
     sx={{
       minHeight: "100vh",
       overflowX: "hidden",
@@ -66,6 +67,7 @@ const CardHeader = ({ title, subtitle }) => (
     </Box>
     <Typography
       variant="h4"
+      component="h1"
       sx={{ fontWeight: 950, letterSpacing: "-0.045em", color: "#0F172A", fontSize: { xs: "1.85rem", sm: "2.15rem" } }}
     >
       {title}

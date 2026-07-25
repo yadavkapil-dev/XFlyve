@@ -251,7 +251,7 @@ const AdminPODs = () => {
           <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
             <Box>
               <Chip label="Delivery Records" size="small" sx={{ mb: 1.5, color: "white", bgcolor: alpha("#fff", 0.12), fontWeight: 850 }} />
-              <Typography variant="h4" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>POD Records</Typography>
+              <Typography variant="h4" component="h1" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>POD Records</Typography>
               <Typography sx={{ mt: 1, color: alpha("#fff", 0.74), lineHeight: 1.6 }}>Review proof-of-delivery uploads by driver for customer follow-up and invoice preparation.</Typography>
             </Box>
             <Button

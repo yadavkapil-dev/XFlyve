@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("OpenRouterProvider: request construction", () => {
-  test("pins the exact free-tier model and calls OpenRouter's chat completions endpoint", async () => {
+  test("sends the exact configured MODEL and calls OpenRouter's chat completions endpoint", async () => {
     const OpenRouterProvider = loadProvider();
     const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
@@ -34,7 +34,11 @@ describe("OpenRouterProvider: request construction", () => {
     expect(options.headers.Authorization).toBe("Bearer test-key");
 
     const body = JSON.parse(options.body);
-    expect(body.model).toBe("meta-llama/llama-3.3-70b-instruct:free");
+    // Asserts against the exported constant rather than a hardcoded string
+    // — this exact model string has already rotated out from under this
+    // app once (see OpenRouterProvider.js's MODEL comment); the request
+    // shape is what this test cares about, not which model string wins.
+    expect(body.model).toBe(OpenRouterProvider.MODEL);
     expect(body.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 

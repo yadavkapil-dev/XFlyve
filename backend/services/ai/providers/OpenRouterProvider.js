@@ -7,7 +7,19 @@ const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 // this swappable to a paid model without an explicit future decision; if a
 // second provider is ever added, it gets its own hardcoded model constant
 // the same way, not a shared config.
-const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+//
+// Originally pinned to meta-llama/llama-3.3-70b-instruct:free, but that
+// specific free-tier slug was pulled from OpenRouter without notice (a
+// live request came back 404, telling us to use the paid slug instead) —
+// a known, common occurrence with free-tier models rotating out
+// unpredictably. Switched to "openrouter/free", OpenRouter's own
+// auto-router: it always resolves to a currently-available free model
+// filtered for tool-calling support, so this trades away pinned
+// reproducibility (we can no longer name the exact model that will answer
+// a given request) for resilience against the next rotation — a better
+// trade for this app than re-pinning to whatever happens to be free today
+// and repeating this same breakage later.
+const MODEL = "openrouter/free";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 

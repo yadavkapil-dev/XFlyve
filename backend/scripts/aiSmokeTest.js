@@ -9,12 +9,15 @@
 //   node scripts/aiSmokeTest.js "What can you help me with?"
 //
 // This exercises the provider layer (services/ai/providers/OpenRouterProvider.js)
-// directly, including whether the pinned free model actually honors
-// function-calling with the same tool schemas aiService.js sends — that's
-// model-specific behavior no mock can verify. It does NOT execute any real
-// tool against the database (no authenticated user/session here), so if the
-// model attempts a tool call, this script just prints what it asked for
-// instead of running it.
+// directly, including whether whichever free model OpenRouter's auto-router
+// (openrouter/free — see OpenRouterProvider.js's MODEL constant for why it's
+// not pinned to one specific model) resolves this request to actually
+// honors function-calling with the same tool schemas aiService.js sends —
+// that's model-specific behavior no mock can verify, and worth re-running
+// this after OpenRouter's free-tier lineup changes. It does NOT execute any
+// real tool against the database (no authenticated user/session here), so
+// if the model attempts a tool call, this script just prints what it asked
+// for instead of running it.
 require("dotenv").config();
 
 const OpenRouterProvider = require("../services/ai/providers/OpenRouterProvider");

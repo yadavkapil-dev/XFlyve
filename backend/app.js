@@ -29,6 +29,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const workDiaryRoutes = require("./routes/workDiaryRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const activityRoutes = require("./routes/activityRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 
 const app = express();
 app.disable("x-powered-by");
@@ -114,6 +115,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/workdiaries", workDiaryRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/activities", activityRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.get("/", (req, res) => {
   res.json({

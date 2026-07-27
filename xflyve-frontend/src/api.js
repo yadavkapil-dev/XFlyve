@@ -237,6 +237,12 @@ export const markAllNotificationsRead = () => api.put("/notifications/read-all")
 // resource anywhere in the app; the collection is write-once server-side.
 export const getJobActivity = (jobId) => api.get(`/activities/job/${jobId}`);
 
+// ===== AI ASSISTANT =====
+// Grounded in real backend data via a server-side tool layer — see
+// backend/services/ai/aiService.js. Auth is the same Bearer-token
+// interceptor as every other call here; no separate pattern.
+export const sendAiChatMessage = (message) => api.post("/ai/chat", { message });
+
 // ===== PUBLIC ROUTE FOR PRESENTATION (NO TOKEN REQUIRED) =====
 export const getPublicDrivers = () => api.get("/admin/show-all-drivers");
 

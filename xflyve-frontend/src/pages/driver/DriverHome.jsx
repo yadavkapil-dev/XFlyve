@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -8,7 +8,6 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Divider,
   Paper,
   Stack,
   Typography,
@@ -16,21 +15,10 @@ import {
 import { alpha } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import {
-  getJobsByDriver,
-  listPodsByDriver,
-  updateJob,
-} from "../../api";
-import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import { getJobsByDriver } from "../../api";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
-import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
-import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
-import RouteOutlinedIcon from "@mui/icons-material/RouteOutlined";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import WorkIcon from "@mui/icons-material/Work";
 
@@ -63,26 +51,14 @@ const toLocalDateKey = (value = new Date()) => {
   return date.toLocaleDateString("en-CA");
 };
 
-const normalizeId = (value) => {
-  if (!value) return "";
-  if (typeof value === "object") return String(value._id || value.id || "");
-  return String(value);
-};
-
-const referencesJob = (record, jobId) => {
-  const linkedJobId = normalizeId(record?.jobId);
-  const currentJobId = normalizeId(jobId);
-  return Boolean(linkedJobId && currentJobId && linkedJobId === currentJobId);
-};
-
+// Same toLocaleDateString(month/day short) pattern used for job dates
+// throughout the driver pages (Jobs.jsx, WorkDiary.jsx, UploadPod.jsx,
+// WorkLogs.jsx), with year added since the summary card isn't otherwise
+// scoped to "today" the way those other views' headers are.
 const formatDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Not scheduled";
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 };
 
 const getGreeting = () => {
@@ -132,93 +108,70 @@ const DashboardSection = ({ title, subtitle, children }) => (
   </Box>
 );
 
-const DetailPill = ({ icon, label, value }) => (
-  <Paper
-    elevation={0}
-    sx={{
-      p: 1.5,
-      borderRadius: 3,
-      border: "1px solid",
-      borderColor: palette.line,
-      bgcolor: alpha("#fff", 0.72),
-      minWidth: 0,
-    }}
-  >
-    <Stack direction="row" spacing={1.25} alignItems="center">
-      <Box
-        sx={{
-          width: 36,
-          height: 36,
-          borderRadius: 2.5,
-          display: "grid",
-          placeItems: "center",
-          color: palette.teal,
-          bgcolor: alpha(palette.teal, 0.08),
-          flexShrink: 0,
-        }}
-      >
-        {icon}
-      </Box>
-      <Box minWidth={0}>
-        <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 750 }}>
-          {label}
-        </Typography>
-        <Typography
-          variant="body2"
-          fontWeight={850}
-          noWrap
-          sx={{ color: palette.ink, letterSpacing: "-0.015em" }}
-        >
-          {value || "—"}
-        </Typography>
-      </Box>
-    </Stack>
-  </Paper>
-);
+// Lightweight summary only — title, type, status. No pickup/delivery/truck
+// detail and no action buttons here: those live on the Jobs page (Start/
+// Complete, POD upload, work diary) and aren't duplicated on the dashboard.
+// Tapping a job just opens that page, where a driver with multiple same-day
+// jobs can act on any of them individually.
+const JobSummaryCard = ({ job, onOpen }) => {
+  const statusMeta = getStatusMeta(job.status);
 
-const ChecklistItem = ({ label, complete, helper }) => (
-  <Paper
-    elevation={0}
-    sx={{
-      p: 1.75,
-      borderRadius: 3.25,
-      border: "1px solid",
-      borderColor: complete ? alpha(palette.emerald, 0.18) : palette.line,
-      bgcolor: complete ? alpha(palette.emerald, 0.055) : alpha("#fff", 0.78),
-    }}
-  >
-    <Stack direction="row" spacing={1.25} alignItems="flex-start">
-      <Box
-        sx={{
-          width: 34,
-          height: 34,
-          borderRadius: 2.5,
-          display: "grid",
-          placeItems: "center",
-          color: complete ? palette.emerald : palette.muted,
-          bgcolor: complete ? alpha(palette.emerald, 0.1) : alpha(palette.muted, 0.08),
-          flexShrink: 0,
-        }}
-      >
-        {complete ? <CheckCircleOutlineIcon /> : <RadioButtonUncheckedIcon />}
-      </Box>
-      <Box minWidth={0}>
-        <Typography
-          variant="body2"
-          fontWeight={850}
-          sx={{ color: palette.ink, letterSpacing: "-0.015em" }}
-        >
-          {label}
-        </Typography>
-        {helper && (
-          <Typography variant="caption" sx={{ color: palette.muted, lineHeight: 1.35 }}>
-            {helper}
-          </Typography>
-        )}
-      </Box>
-    </Stack>
-  </Paper>
-);
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        borderRadius: 4,
+        border: "1px solid",
+        borderColor: palette.line,
+        bgcolor: palette.panel,
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
+      }}
+    >
+      <CardActionArea onClick={onOpen} sx={{ p: { xs: 2, sm: 2.25 } }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
+          <Box minWidth={0}>
+            <Typography
+              variant="subtitle1"
+              fontWeight={900}
+              noWrap
+              sx={{ color: palette.ink, letterSpacing: "-0.025em" }}
+            >
+              {job.title || "Assigned job"}
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+              <Chip
+                label={job.jobType === "interstate" ? "Interstate" : "Local"}
+                size="small"
+                sx={{
+                  color: palette.muted,
+                  bgcolor: alpha(palette.muted, 0.08),
+                  fontWeight: 750,
+                  height: 22,
+                  fontSize: "0.7rem",
+                }}
+              />
+              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 700 }}>
+                {formatDate(job.jobDate)}
+              </Typography>
+            </Stack>
+          </Box>
+          <Chip
+            label={statusMeta.label}
+            sx={{
+              flexShrink: 0,
+              color: statusMeta.color,
+              bgcolor: statusMeta.bg,
+              border: "1px solid",
+              borderColor: alpha(statusMeta.color, 0.18),
+              fontWeight: 900,
+              textTransform: "capitalize",
+            }}
+          />
+        </Stack>
+      </CardActionArea>
+    </Card>
+  );
+};
 
 const QuickActionCard = ({ label, description, icon, onClick, featured = false }) => (
   <Card
@@ -297,21 +250,8 @@ const DriverHome = () => {
   const driverId = user?._id || user?.id;
 
   const [jobs, setJobs] = useState([]);
-  const [pods, setPods] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const refreshPods = useCallback(async () => {
-    if (!driverId) return;
-
-    try {
-      const driverPods = await listPodsByDriver(driverId, { limit: 100 });
-      setPods(toArray(driverPods));
-    } catch {
-      setError("POD status could not be refreshed. Showing the last available result.");
-    }
-  }, [driverId]);
 
   useEffect(() => {
     if (!driverId) {
@@ -323,15 +263,11 @@ const DriverHome = () => {
       setLoading(true);
       setError("");
 
-      const results = await Promise.allSettled([
-        getJobsByDriver(driverId),
-        listPodsByDriver(driverId, { limit: 100 }),
-      ]);
-
-      setJobs(results[0].status === "fulfilled" ? toArray(results[0].value) : []);
-      setPods(results[1].status === "fulfilled" ? toArray(results[1].value) : []);
-
-      if (results.some((result) => result.status === "rejected")) {
+      try {
+        const driverJobs = await getJobsByDriver(driverId);
+        setJobs(toArray(driverJobs));
+      } catch {
+        setJobs([]);
         setError("Some driver records could not be loaded. Showing what is available.");
       }
 
@@ -341,105 +277,22 @@ const DriverHome = () => {
     fetchDriverDashboard();
   }, [driverId]);
 
-  useEffect(() => {
-    if (!driverId) return undefined;
-
-    const handlePageReturn = () => {
-      refreshPods();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") refreshPods();
-    };
-
-    window.addEventListener("focus", handlePageReturn);
-    window.addEventListener("pageshow", handlePageReturn);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", handlePageReturn);
-      window.removeEventListener("pageshow", handlePageReturn);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [driverId, refreshPods]);
-
   const todayKey = toLocalDateKey();
 
+  // A driver can legitimately have more than one job the same day (e.g. two
+  // different trucks) — the backend has never prevented this, only a single
+  // truck being double-booked on one day. Every job matching today's date is
+  // shown; none are dropped via a tiebreak the way the old single-job card
+  // used to.
   const dashboard = useMemo(() => {
     const sortedJobs = [...jobs].sort((a, b) => new Date(a.jobDate) - new Date(b.jobDate));
     const todaysJobs = sortedJobs.filter((job) => toLocalDateKey(job.jobDate) === todayKey);
-    const activeTodayJob =
-      todaysJobs.find((job) => job.status === "in-progress") ||
-      todaysJobs.find((job) => job.status === "pending") ||
-      todaysJobs[0] ||
-      null;
 
-    const activeTodayJobId = activeTodayJob?._id || activeTodayJob?.id;
-    const hasPodForCurrentJob = pods.some((pod) => referencesJob(pod, activeTodayJobId));
+    return { todaysJobs, hasAnyJobs: jobs.length > 0 };
+  }, [jobs, todayKey]);
 
-    return {
-      todaysJobs,
-      activeTodayJob,
-      hasPodForCurrentJob,
-      hasAnyJobs: jobs.length > 0,
-    };
-  }, [jobs, pods, todayKey]);
+  const goToJobs = () => navigate("/driver/jobs");
 
-  const currentJob = dashboard.activeTodayJob;
-  const statusMeta = getStatusMeta(currentJob?.status);
-  const isCompletedWithPod =
-    currentJob?.status === "completed" && dashboard.hasPodForCurrentJob;
-  const isInterstateJob = currentJob?.jobType === "interstate";
-
-  const handlePrimaryAction = async () => {
-    if (!currentJob) {
-      navigate("/driver/jobs");
-      return;
-    }
-
-    if (currentJob.status === "completed") {
-      if (dashboard.hasPodForCurrentJob) return;
-      navigate(`/driver/pods/upload/${currentJob._id}`);
-      return;
-    }
-
-    const nextStatus = currentJob.status === "in-progress" ? "completed" : "in-progress";
-
-    setActionLoading(true);
-    setError("");
-
-    try {
-      const response = await updateJob(currentJob._id, { status: nextStatus });
-      const updatedJob = response.data.data;
-      setJobs((prevJobs) =>
-        prevJobs.map((job) =>
-          job._id === currentJob._id ? { ...job, ...updatedJob } : job
-        )
-      );
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not update job status.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const primaryActionLabel = currentJob
-    ? currentJob.status === "completed"
-      ? dashboard.hasPodForCurrentJob
-        ? "Completed"
-        : "Upload POD"
-      : currentJob.status === "in-progress"
-        ? "Complete Job"
-        : "Start Job"
-    : "View All Jobs";
-
-  const primaryActionIcon = currentJob?.status === "completed" ? (
-    dashboard.hasPodForCurrentJob ? <CheckCircleOutlineIcon /> : <UploadFileIcon />
-  ) : currentJob?.status === "in-progress" ? (
-    <CheckCircleOutlineIcon />
-  ) : (
-    <PlayArrowRoundedIcon />
-  );
   const quickActions = [
     {
       label: "View All Jobs",
@@ -588,135 +441,19 @@ const DriverHome = () => {
         ) : (
           <Stack spacing={{ xs: 3.5, md: 4.5 }}>
             <DashboardSection
-              title="Today’s Job"
-              subtitle="Your next run and the action that matters most right now."
+              title="Today’s Jobs"
+              subtitle={
+                dashboard.todaysJobs.length > 0
+                  ? "Tap a job to open it in your jobs list."
+                  : "Your assigned runs for today."
+              }
             >
-              {currentJob ? (
-                <Paper
-                  elevation={0}
-                  sx={{
-                    p: { xs: 2.25, sm: 2.75 },
-                    borderRadius: { xs: 4, sm: 5 },
-                    border: "1px solid",
-                    borderColor: palette.line,
-                    bgcolor: palette.panel,
-                    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
-                  }}
-                >
-                  <Stack spacing={2.25}>
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      justifyContent="space-between"
-                      spacing={1.25}
-                    >
-                      <Box minWidth={0}>
-                        <Typography
-                          variant="h5"
-                          fontWeight={950}
-                          sx={{
-                            color: palette.ink,
-                            letterSpacing: "-0.05em",
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {currentJob.title || "Assigned job"}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{ mt: 0.75, color: palette.muted, lineHeight: 1.55 }}
-                        >
-                          {currentJob.description || "Complete this run and submit records when done."}
-                        </Typography>
-                      </Box>
-                      <Chip
-                        label={statusMeta.label}
-                        sx={{
-                          alignSelf: { xs: "flex-start", sm: "center" },
-                          color: statusMeta.color,
-                          bgcolor: statusMeta.bg,
-                          border: "1px solid",
-                          borderColor: alpha(statusMeta.color, 0.18),
-                          fontWeight: 900,
-                          textTransform: "capitalize",
-                        }}
-                      />
-                    </Stack>
-
-                    <Divider sx={{ borderColor: palette.line }} />
-
-                    <Box
-                      sx={{
-                        display: "grid",
-                        gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
-                        gap: 1.5,
-                      }}
-                    >
-                      <DetailPill
-                        icon={<LocationOnOutlinedIcon />}
-                        label="Pickup"
-                        value={currentJob.pickupLocation}
-                      />
-                      <DetailPill
-                        icon={<RouteOutlinedIcon />}
-                        label="Delivery"
-                        value={currentJob.deliveryLocation}
-                      />
-                      <DetailPill
-                        icon={<LocalShippingIcon />}
-                        label="Truck"
-                        value={currentJob.assignedTruck?.truckNumber}
-                      />
-                      <DetailPill
-                        icon={<AssignmentTurnedInIcon />}
-                        label="Date"
-                        value={formatDate(currentJob.jobDate)}
-                      />
-                    </Box>
-
-                    <Button
-                      variant="contained"
-                      size="large"
-                      startIcon={primaryActionIcon}
-                      onClick={handlePrimaryAction}
-                      disabled={actionLoading || isCompletedWithPod}
-                      fullWidth
-                      sx={{
-                        minHeight: 56,
-                        borderRadius: 3.25,
-                        bgcolor: palette.ink,
-                        fontWeight: 950,
-                        letterSpacing: "-0.02em",
-                        "&:hover": { bgcolor: "#111827" },
-                      }}
-                    >
-                      {actionLoading ? "Updating..." : primaryActionLabel}
-                    </Button>
-                    {isCompletedWithPod && (
-                      <Button
-                        variant="outlined"
-                        size="large"
-                        startIcon={<UploadFileIcon />}
-                        onClick={() => navigate(`/driver/pods/upload/${currentJob._id}`)}
-                        fullWidth
-                        sx={{ minHeight: 52, borderRadius: 3.25, fontWeight: 900 }}
-                      >
-                        Edit / Replace POD
-                      </Button>
-                    )}
-                    {isInterstateJob && (
-                      <Button
-                        variant="outlined"
-                        size="large"
-                        startIcon={<DescriptionOutlinedIcon />}
-                        onClick={() => navigate(`/driver/work-diary/${currentJob._id}`)}
-                        fullWidth
-                        sx={{ minHeight: 52, borderRadius: 3.25, fontWeight: 900 }}
-                      >
-                        Work Diary Pages
-                      </Button>
-                    )}
-                  </Stack>
-                </Paper>
+              {dashboard.todaysJobs.length > 0 ? (
+                <Stack spacing={1.5}>
+                  {dashboard.todaysJobs.map((job) => (
+                    <JobSummaryCard key={job._id || job.id} job={job} onOpen={goToJobs} />
+                  ))}
+                </Stack>
               ) : (
                 <Paper
                   elevation={0}
@@ -759,7 +496,7 @@ const DriverHome = () => {
                     <Button
                       variant="outlined"
                       size="large"
-                      onClick={() => navigate("/driver/jobs")}
+                      onClick={goToJobs}
                       sx={{ minHeight: 52, borderRadius: 3, fontWeight: 900 }}
                     >
                       View All Jobs
@@ -767,39 +504,6 @@ const DriverHome = () => {
                   </Stack>
                 </Paper>
               )}
-            </DashboardSection>
-
-            <DashboardSection
-              title="Today’s Checklist"
-              subtitle="Track today’s assignment, completion, and delivery proof."
-            >
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
-                  gap: 1.5,
-                }}
-              >
-                <ChecklistItem
-                  label="Job Assigned"
-                  complete={Boolean(currentJob)}
-                  helper={currentJob ? "Today’s job is ready." : "No job for today."}
-                />
-                <ChecklistItem
-                  label="Job Completed"
-                  complete={currentJob?.status === "completed"}
-                  helper={currentJob?.status === "completed" ? "Marked complete." : "Complete when delivered."}
-                />
-                <ChecklistItem
-                  label="POD Uploaded"
-                  complete={dashboard.hasPodForCurrentJob}
-                  helper={
-                    dashboard.hasPodForCurrentJob
-                      ? "Delivery proof is linked to this job."
-                      : "Upload delivery proof for this job."
-                  }
-                />
-              </Box>
             </DashboardSection>
 
             <DashboardSection

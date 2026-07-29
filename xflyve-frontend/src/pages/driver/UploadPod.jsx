@@ -16,7 +16,7 @@ import { Delete, Edit, Save, Cancel } from "@mui/icons-material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { uploadPod, listPodsByDriver, deletePod, updatePodNotes } from "../../api";
 
@@ -63,8 +63,40 @@ const getStatusMeta = (status = "pending") => {
   return { label: "Pending approval", color: palette.amber };
 };
 
+const toLocalDateKey = (value) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA");
+};
+
+// Groups records by local calendar date (using the same "uploaded"
+// timestamp already shown on each card), most recent date first — same
+// approach reused identically on the Work Diary history page.
+const groupByDate = (records, getDate) => {
+  const groups = new Map();
+
+  records.forEach((record) => {
+    const key = toLocalDateKey(getDate(record)) || "unknown";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  });
+
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      if (a === b) return 0;
+      if (a === "unknown") return 1;
+      if (b === "unknown") return -1;
+      return a < b ? 1 : -1;
+    })
+    .map(([key, items]) => ({
+      key,
+      label: key === "unknown" ? "Unknown date" : formatDate(getDate(items[0])),
+      items: [...items].sort((a, b) => new Date(getDate(b)) - new Date(getDate(a))),
+    }));
+};
+
 const DriverPOD = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { id: routeJobId } = useParams();
   const driverId = user?._id || user?.id;
 
@@ -219,86 +251,107 @@ const DriverPOD = () => {
             <Typography sx={{ mt: 0.5, color: palette.muted }}>Uploaded proof of delivery documents will appear here.</Typography>
           </Paper>
         ) : (
-          <Stack spacing={2}>
-            {pods.map((pod) => {
-              const job = pod.jobId && typeof pod.jobId === "object" ? pod.jobId : null;
-              const deliveryLocation = job?.deliveryLocation || job?.dropoffLocation;
-              const statusMeta = getStatusMeta(pod.status);
-              const isApproved = pod.status === "approved";
+          <Stack spacing={3}>
+            {groupByDate(pods, (pod) => pod.uploadDate || pod.createdAt).map((group) => (
+              <Box key={group.key}>
+                <Typography variant="overline" sx={{ color: palette.muted, fontWeight: 900, letterSpacing: "0.08em" }}>
+                  {group.label}
+                </Typography>
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                  {group.items.map((pod) => {
+                    const job = pod.jobId && typeof pod.jobId === "object" ? pod.jobId : null;
+                    const deliveryLocation = job?.deliveryLocation || job?.dropoffLocation;
+                    const statusMeta = getStatusMeta(pod.status);
+                    const isApproved = pod.status === "approved";
 
-              return (
-                <Paper key={pod._id} elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-                  <Stack spacing={2}>
-                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                      <Box sx={{ width: 46, height: 46, borderRadius: 3, display: "grid", placeItems: "center", color: palette.teal, bgcolor: alpha(palette.teal, 0.09), flexShrink: 0 }}>
-                        <Inventory2OutlinedIcon />
-                      </Box>
-                      <Box flex={1} minWidth={0}>
-                        <Typography fontWeight={950} sx={{ color: palette.ink }}>
-                          {job ? formatDate(job.jobDate) : "Unlinked POD"}
-                        </Typography>
-                        {job ? (
-                          <>
-                            {job.jobNumber && (
-                              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>
-                                Job {job.jobNumber}
+                    return (
+                      <Paper key={pod._id} elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
+                        <Stack spacing={2}>
+                          <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                            <Box sx={{ width: 46, height: 46, borderRadius: 3, display: "grid", placeItems: "center", color: palette.teal, bgcolor: alpha(palette.teal, 0.09), flexShrink: 0 }}>
+                              <Inventory2OutlinedIcon />
+                            </Box>
+                            <Box flex={1} minWidth={0}>
+                              <Typography fontWeight={950} sx={{ color: palette.ink }}>
+                                {job ? formatDate(job.jobDate) : "Unlinked POD"}
                               </Typography>
-                            )}
-                            <Typography variant="body2" fontWeight={850} sx={{ mt: 0.5, color: palette.ink }}>
-                              {job.pickupLocation || "Unknown pickup"} → {deliveryLocation || "Unknown delivery"}
+                              {job ? (
+                                <>
+                                  {job.jobNumber && (
+                                    <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>
+                                      Job {job.jobNumber}
+                                    </Typography>
+                                  )}
+                                  <Typography variant="body2" fontWeight={850} sx={{ mt: 0.5, color: palette.ink }}>
+                                    {job.pickupLocation || "Unknown pickup"} → {deliveryLocation || "Unknown delivery"}
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted, lineHeight: 1.5 }}>
+                                    {job.description || "No job description."}
+                                  </Typography>
+                                </>
+                              ) : (
+                                <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted }}>
+                                  Uploaded before job-linking
+                                </Typography>
+                              )}
+                            </Box>
+                            <Chip
+                              size="small"
+                              label={isApproved ? "Approved by admin — locked" : statusMeta.label}
+                              sx={{ color: statusMeta.color, bgcolor: alpha(statusMeta.color, 0.1), fontWeight: 900 }}
+                            />
+                          </Stack>
+
+                          <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
+                            <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>POD uploaded</Typography>
+                            <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>
+                              {formatDateTime(pod.uploadDate || pod.createdAt)}
                             </Typography>
-                            <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted, lineHeight: 1.5 }}>
-                              {job.description || "No job description."}
-                            </Typography>
-                          </>
-                        ) : (
-                          <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted }}>
-                            Uploaded before job-linking
-                          </Typography>
-                        )}
-                      </Box>
-                      <Chip
-                        size="small"
-                        label={isApproved ? "Approved by admin — locked" : statusMeta.label}
-                        sx={{ color: statusMeta.color, bgcolor: alpha(statusMeta.color, 0.1), fontWeight: 900 }}
-                      />
-                    </Stack>
+                          </Box>
 
-                    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
-                      <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>POD uploaded</Typography>
-                      <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>
-                        {formatDateTime(pod.uploadDate || pod.createdAt)}
-                      </Typography>
-                    </Box>
+                          {editId === pod._id ? (
+                            <TextField multiline rows={2} fullWidth label="Notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+                          ) : (
+                            <Box>
+                              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Notes</Typography>
+                              <Typography variant="body2" sx={{ mt: 0.25, color: palette.ink }}>{pod.notes || "No notes added."}</Typography>
+                            </Box>
+                          )}
 
-                    {editId === pod._id ? (
-                      <TextField multiline rows={2} fullWidth label="Notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
-                    ) : (
-                      <Box>
-                        <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Notes</Typography>
-                        <Typography variant="body2" sx={{ mt: 0.25, color: palette.ink }}>{pod.notes || "No notes added."}</Typography>
-                      </Box>
-                    )}
+                          {!isApproved && job && (
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              startIcon={<UploadFileIcon />}
+                              onClick={() => navigate(`/driver/pods/upload/${job._id}`)}
+                              sx={{ minHeight: 46, borderRadius: 3, fontWeight: 900 }}
+                            >
+                              Edit / Replace POD
+                            </Button>
+                          )}
 
-                    {!isApproved && (
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        {editId === pod._id ? (
-                          <>
-                            <IconButton aria-label="save POD notes" onClick={() => saveEdit(pod._id)}><Save /></IconButton>
-                            <IconButton aria-label="cancel editing POD notes" color="error" onClick={() => setEditId(null)}><Cancel /></IconButton>
-                          </>
-                        ) : (
-                          <>
-                            <IconButton aria-label="edit POD notes" onClick={() => { setEditId(pod._id); setEditNotes(pod.notes || ""); }}><Edit /></IconButton>
-                            <IconButton aria-label="delete POD" color="error" onClick={() => handleDelete(pod._id)}><Delete /></IconButton>
-                          </>
-                        )}
-                      </Stack>
-                    )}
-                  </Stack>
-                </Paper>
-              );
-            })}
+                          {!isApproved && (
+                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                              {editId === pod._id ? (
+                                <>
+                                  <IconButton aria-label="save POD notes" onClick={() => saveEdit(pod._id)}><Save /></IconButton>
+                                  <IconButton aria-label="cancel editing POD notes" color="error" onClick={() => setEditId(null)}><Cancel /></IconButton>
+                                </>
+                              ) : (
+                                <>
+                                  <IconButton aria-label="edit POD notes" onClick={() => { setEditId(pod._id); setEditNotes(pod.notes || ""); }}><Edit /></IconButton>
+                                  <IconButton aria-label="delete POD" color="error" onClick={() => handleDelete(pod._id)}><Delete /></IconButton>
+                                </>
+                              )}
+                            </Stack>
+                          )}
+                        </Stack>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            ))}
           </Stack>
         )}
       </Box>

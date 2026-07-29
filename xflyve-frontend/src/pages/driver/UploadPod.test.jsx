@@ -106,4 +106,54 @@ describe("DriverPOD — POD upload interaction", () => {
 
     confirmSpy.mockRestore();
   });
+
+  test("PASS: a pending POD linked to a job shows 'Edit / Replace POD', which navigates to that job's upload route", async () => {
+    listPodsByDriver.mockResolvedValue({
+      data: [{ _id: "pod1", jobId: { _id: "job1", jobDate: "2026-07-20", pickupLocation: "A", deliveryLocation: "B" }, status: "pending", notes: "" }],
+    });
+
+    renderAt("/driver/pods/upload");
+
+    const editReplaceButton = await screen.findByRole("button", { name: "Edit / Replace POD" });
+    await userEvent.click(editReplaceButton);
+
+    expect(await screen.findByText("This POD will be linked to the selected job.")).toBeInTheDocument();
+  });
+
+  test("PASS: an approved POD does not show 'Edit / Replace POD' — locked once approved, same as the notes-edit action", async () => {
+    listPodsByDriver.mockResolvedValue({
+      data: [{ _id: "pod1", jobId: { _id: "job1", jobDate: "2026-07-20" }, status: "approved", notes: "" }],
+    });
+
+    renderAt("/driver/pods/upload");
+
+    expect(await screen.findByText("Approved by admin — locked")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit / Replace POD" })).not.toBeInTheDocument();
+  });
+
+  test("PASS: POD records are grouped under a date heading, most recent date first", async () => {
+    // Constructed via local-time components (not a UTC ISO literal) so the
+    // calendar day this resolves to is stable regardless of the test
+    // runner's timezone — the component reads it back via
+    // toLocaleDateString in that same local timezone.
+    const julyFirstLocalNoon = new Date(2026, 6, 1, 12, 0, 0).toISOString();
+    const julyFifteenthLocalNoon = new Date(2026, 6, 15, 12, 0, 0).toISOString();
+    listPodsByDriver.mockResolvedValue({
+      data: [
+        { _id: "pod-old", jobId: "job-old", status: "pending", uploadDate: julyFirstLocalNoon, notes: "" },
+        { _id: "pod-new", jobId: "job-new", status: "pending", uploadDate: julyFifteenthLocalNoon, notes: "" },
+      ],
+    });
+
+    renderAt("/driver/pods/upload");
+
+    await screen.findByText("Recent POD uploads");
+    const headings = screen.getAllByText(/2026$/).map((el) => el.textContent);
+    const julyFifteenIndex = headings.findIndex((text) => text.includes("Jul 15"));
+    const julyFirstIndex = headings.findIndex((text) => text.includes("Jul 1,"));
+
+    expect(julyFifteenIndex).toBeGreaterThanOrEqual(0);
+    expect(julyFirstIndex).toBeGreaterThanOrEqual(0);
+    expect(julyFifteenIndex).toBeLessThan(julyFirstIndex);
+  });
 });

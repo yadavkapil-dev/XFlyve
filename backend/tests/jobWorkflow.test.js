@@ -684,7 +684,13 @@ describe("Job workflow model", () => {
       await expect(job.isInvoiceReady()).resolves.toBe(true);
     });
 
-    test("interstate job with completed status and approved POD but no approved diary is not invoice ready", async () => {
+    // Rule change (Phase 16): invoice-readiness now depends on POD approval
+    // alone, for both job types — a work diary is still required for the
+    // driver to submit and still goes through its own approval workflow,
+    // it just no longer gates invoicing. This test previously asserted the
+    // opposite (an interstate job without an approved diary was NOT invoice
+    // ready); updated to match the new rule.
+    test("interstate job with completed status and approved POD is invoice ready even without an approved diary", async () => {
       const Job = loadJobModel();
       mockDocumentChecks(Job, { hasPod: true, hasDiary: false });
       const job = new Job({
@@ -698,7 +704,7 @@ describe("Job workflow model", () => {
         status: "completed",
       });
 
-      await expect(job.isInvoiceReady()).resolves.toBe(false);
+      await expect(job.isInvoiceReady()).resolves.toBe(true);
     });
 
     test("interstate job with completed status, approved POD, and approved diary is invoice ready", async () => {

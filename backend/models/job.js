@@ -132,34 +132,30 @@ jobSchema.methods.hasApprovedPod = async function () {
   return Boolean(approvedPod);
 };
 
-jobSchema.methods.hasApprovedDiary = async function () {
-  const WorkDiary = mongoose.model("WorkDiary");
-  const linkedDiaryIds = this.diaryIds || [];
-
-  const approvedDiary = await WorkDiary.exists({
-    status: "approved",
-    $or: [
-      { jobId: this._id },
-      ...(linkedDiaryIds.length ? [{ _id: { $in: linkedDiaryIds } }] : []),
-    ],
-  });
-
-  return Boolean(approvedDiary);
-};
-
+// A job is invoice-ready once its POD is approved — full stop, for both
+// local and interstate jobs. Work diaries/logs are still required for the
+// driver to submit and still go through their own approval workflow
+// (unchanged); they just no longer gate invoice-readiness. (Previously
+// interstate jobs also required an approved diary here; removed per a
+// deliberate business rule change — see Phase 16.)
+//
+// job.status === "completed" is still required. Uploading/approving a POD
+// has no dependency on the linked job's status anywhere in this codebase
+// (uploadPOD and approvePOD in jobPodController.js never check it) — in
+// practice a POD can be, and per the normal driver flow often is, approved
+// before the job itself is flipped to "completed" (the driver typically
+// completes the job first and only then sees the "Upload POD" action, but
+// nothing technically prevents uploading earlier). That's a sequencing
+// quirk of the upload/approval flow, not a reason to invoice work the job
+// record itself doesn't yet call finished — invoicing a job that isn't
+// completed would be wrong regardless of paperwork status, so this check
+// stays.
 jobSchema.methods.isInvoiceReady = async function () {
   if (this.status !== "completed") return false;
   if (this.recordStatus === "archived") return false;
   if (!["pending", "ready"].includes(this.invoiceStatus || "pending")) return false;
 
-  const hasPod = await this.hasApprovedPod();
-  if (!hasPod) return false;
-
-  // Local work requires approved delivery proof only. Interstate work also
-  // requires an approved compliance/work diary before invoicing.
-  if (this.jobType === "local") return true;
-
-  return this.hasApprovedDiary();
+  return this.hasApprovedPod();
 };
 
 jobSchema.statics.findReadyForInvoicing = async function () {

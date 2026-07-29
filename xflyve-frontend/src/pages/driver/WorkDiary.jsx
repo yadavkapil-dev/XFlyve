@@ -19,7 +19,7 @@ import CancelIcon from "@mui/icons-material/Cancel";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   uploadWorkDiary,
@@ -71,8 +71,40 @@ const getStatusMeta = (status = "pending") => {
   return { label: "Pending approval", color: palette.amber };
 };
 
+const toLocalDateKey = (value) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-CA");
+};
+
+// Groups records by local calendar date (using the same "uploaded"
+// timestamp already shown on each card), most recent date first — same
+// approach reused identically on the POD history page.
+const groupByDate = (records, getDate) => {
+  const groups = new Map();
+
+  records.forEach((record) => {
+    const key = toLocalDateKey(getDate(record)) || "unknown";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  });
+
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      if (a === b) return 0;
+      if (a === "unknown") return 1;
+      if (b === "unknown") return -1;
+      return a < b ? 1 : -1;
+    })
+    .map(([key, items]) => ({
+      key,
+      label: key === "unknown" ? "Unknown date" : formatDate(getDate(items[0])),
+      items: [...items].sort((a, b) => new Date(getDate(b)) - new Date(getDate(a))),
+    }));
+};
+
 const WorkDiary = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { id: routeJobId } = useParams();
   const driverId = user?._id || user?.id;
 
@@ -229,95 +261,116 @@ const WorkDiary = () => {
             <Typography sx={{ mt: 0.5, color: palette.muted }}>Uploaded work diary documents will appear here.</Typography>
           </Paper>
         ) : (
-          <Stack spacing={2}>
-            {workDiaries.map((diary) => {
-              const job = diary.jobId && typeof diary.jobId === "object" ? diary.jobId : null;
-              const deliveryLocation = job?.deliveryLocation || job?.dropoffLocation;
-              const truck = diary.truckId && typeof diary.truckId === "object"
-                ? diary.truckId
-                : job?.assignedTruck && typeof job.assignedTruck === "object"
-                  ? job.assignedTruck
-                  : null;
-              const truckLabel = truck?.truckNumber || truck?.name || "Not available";
-              const statusMeta = getStatusMeta(diary.status);
-              const isApproved = diary.status === "approved";
+          <Stack spacing={3}>
+            {groupByDate(workDiaries, (diary) => diary.uploadDate || diary.createdAt).map((group) => (
+              <Box key={group.key}>
+                <Typography variant="overline" sx={{ color: palette.muted, fontWeight: 900, letterSpacing: "0.08em" }}>
+                  {group.label}
+                </Typography>
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                  {group.items.map((diary) => {
+                    const job = diary.jobId && typeof diary.jobId === "object" ? diary.jobId : null;
+                    const deliveryLocation = job?.deliveryLocation || job?.dropoffLocation;
+                    const truck = diary.truckId && typeof diary.truckId === "object"
+                      ? diary.truckId
+                      : job?.assignedTruck && typeof job.assignedTruck === "object"
+                        ? job.assignedTruck
+                        : null;
+                    const truckLabel = truck?.truckNumber || truck?.name || "Not available";
+                    const statusMeta = getStatusMeta(diary.status);
+                    const isApproved = diary.status === "approved";
 
-              return (
-                <Paper key={diary._id} elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-                  <Stack spacing={2}>
-                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                      <Box sx={{ width: 46, height: 46, borderRadius: 3, display: "grid", placeItems: "center", color: palette.teal, bgcolor: alpha(palette.teal, 0.09), flexShrink: 0 }}>
-                        <DescriptionOutlinedIcon />
-                      </Box>
-                      <Box flex={1} minWidth={0}>
-                        <Typography fontWeight={950} sx={{ color: palette.ink }}>
-                          {job ? formatDate(job.jobDate, "Unknown job date") : "Unlinked Work Diary"}
-                        </Typography>
-                        {job ? (
-                          <>
-                            <Typography variant="body2" fontWeight={850} sx={{ mt: 0.5, color: palette.ink }}>
-                              {job.pickupLocation || "Unknown pickup"} → {deliveryLocation || "Unknown delivery"}
-                            </Typography>
-                            <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted, lineHeight: 1.5 }}>
-                              {job.description || "No job description available."}
-                            </Typography>
-                          </>
-                        ) : (
-                          <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted }}>
-                            Uploaded before job-linking was introduced
-                          </Typography>
-                        )}
-                      </Box>
-                      <Chip
-                        size="small"
-                        label={isApproved ? "Approved by admin — locked" : statusMeta.label}
-                        sx={{ color: statusMeta.color, bgcolor: alpha(statusMeta.color, 0.1), fontWeight: 900 }}
-                      />
-                    </Stack>
+                    return (
+                      <Paper key={diary._id} elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
+                        <Stack spacing={2}>
+                          <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                            <Box sx={{ width: 46, height: 46, borderRadius: 3, display: "grid", placeItems: "center", color: palette.teal, bgcolor: alpha(palette.teal, 0.09), flexShrink: 0 }}>
+                              <DescriptionOutlinedIcon />
+                            </Box>
+                            <Box flex={1} minWidth={0}>
+                              <Typography fontWeight={950} sx={{ color: palette.ink }}>
+                                {job ? formatDate(job.jobDate, "Unknown job date") : "Unlinked Work Diary"}
+                              </Typography>
+                              {job ? (
+                                <>
+                                  <Typography variant="body2" fontWeight={850} sx={{ mt: 0.5, color: palette.ink }}>
+                                    {job.pickupLocation || "Unknown pickup"} → {deliveryLocation || "Unknown delivery"}
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted, lineHeight: 1.5 }}>
+                                    {job.description || "No job description available."}
+                                  </Typography>
+                                </>
+                              ) : (
+                                <Typography variant="body2" sx={{ mt: 0.5, color: palette.muted }}>
+                                  Uploaded before job-linking was introduced
+                                </Typography>
+                              )}
+                            </Box>
+                            <Chip
+                              size="small"
+                              label={isApproved ? "Approved by admin — locked" : statusMeta.label}
+                              sx={{ color: statusMeta.color, bgcolor: alpha(statusMeta.color, 0.1), fontWeight: 900 }}
+                            />
+                          </Stack>
 
-                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
-                      <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
-                        <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Truck</Typography>
-                        <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>{truckLabel}</Typography>
-                      </Box>
-                      <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
-                        <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Work Date</Typography>
-                        <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>{formatDate(diary.workDate)}</Typography>
-                      </Box>
-                      <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
-                        <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Uploaded</Typography>
-                        <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>{formatDateTime(diary.uploadDate || diary.createdAt)}</Typography>
-                      </Box>
-                    </Box>
+                          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
+                            <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
+                              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Truck</Typography>
+                              <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>{truckLabel}</Typography>
+                            </Box>
+                            <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
+                              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Work Date</Typography>
+                              <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>{formatDate(diary.workDate)}</Typography>
+                            </Box>
+                            <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: alpha(palette.teal, 0.045), border: "1px solid", borderColor: palette.line }}>
+                              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Uploaded</Typography>
+                              <Typography variant="body2" fontWeight={850} sx={{ color: palette.ink }}>{formatDateTime(diary.uploadDate || diary.createdAt)}</Typography>
+                            </Box>
+                          </Box>
 
-                    {editId === diary._id ? (
-                      <TextField multiline rows={2} fullWidth label="Notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
-                    ) : (
-                      <Box>
-                        <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Notes</Typography>
-                        <Typography variant="body2" sx={{ mt: 0.25, color: palette.ink }}>{diary.notes || "No notes added."}</Typography>
-                      </Box>
-                    )}
+                          {editId === diary._id ? (
+                            <TextField multiline rows={2} fullWidth label="Notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+                          ) : (
+                            <Box>
+                              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 800 }}>Notes</Typography>
+                              <Typography variant="body2" sx={{ mt: 0.25, color: palette.ink }}>{diary.notes || "No notes added."}</Typography>
+                            </Box>
+                          )}
 
-                    {!isApproved && (
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        {editId === diary._id ? (
-                          <>
-                            <IconButton aria-label="save work diary notes" onClick={() => saveEdit(diary._id)}><SaveIcon /></IconButton>
-                            <IconButton aria-label="cancel editing work diary notes" color="error" onClick={() => setEditId(null)}><CancelIcon /></IconButton>
-                          </>
-                        ) : (
-                          <>
-                            <IconButton aria-label="edit work diary notes" onClick={() => { setEditId(diary._id); setEditNotes(diary.notes || ""); }}><EditIcon /></IconButton>
-                            <IconButton aria-label="delete work diary" color="error" onClick={() => handleDelete(diary._id)}><DeleteIcon /></IconButton>
-                          </>
-                        )}
-                      </Stack>
-                    )}
-                  </Stack>
-                </Paper>
-              );
-            })}
+                          {!isApproved && job && (
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              startIcon={<UploadFileIcon />}
+                              onClick={() => navigate(`/driver/work-diary/${job._id}`)}
+                              sx={{ minHeight: 46, borderRadius: 3, fontWeight: 900 }}
+                            >
+                              Edit / Replace Diary
+                            </Button>
+                          )}
+
+                          {!isApproved && (
+                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                              {editId === diary._id ? (
+                                <>
+                                  <IconButton aria-label="save work diary notes" onClick={() => saveEdit(diary._id)}><SaveIcon /></IconButton>
+                                  <IconButton aria-label="cancel editing work diary notes" color="error" onClick={() => setEditId(null)}><CancelIcon /></IconButton>
+                                </>
+                              ) : (
+                                <>
+                                  <IconButton aria-label="edit work diary notes" onClick={() => { setEditId(diary._id); setEditNotes(diary.notes || ""); }}><EditIcon /></IconButton>
+                                  <IconButton aria-label="delete work diary" color="error" onClick={() => handleDelete(diary._id)}><DeleteIcon /></IconButton>
+                                </>
+                              )}
+                            </Stack>
+                          )}
+                        </Stack>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            ))}
           </Stack>
         )}
       </Box>

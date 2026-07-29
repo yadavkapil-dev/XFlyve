@@ -68,6 +68,31 @@ describe("DriverHome — Today's Jobs summary", () => {
     expect(screen.getByText("In progress")).toBeInTheDocument();
   });
 
+  test("PASS: the summary card shows pickup → delivery and the assigned truck number", async () => {
+    const job = baseJob({
+      title: "Route run",
+      pickupLocation: "Warehouse A",
+      deliveryLocation: "Customer B",
+      assignedTruck: { truckNumber: "TRK-42" },
+    });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderDriverHome();
+
+    expect(await screen.findByText("Warehouse A → Customer B")).toBeInTheDocument();
+    expect(screen.getByText("TRK-42")).toBeInTheDocument();
+  });
+
+  test("PASS: no truck row renders when the job has no assigned truck", async () => {
+    const job = baseJob({ title: "Unassigned truck run", pickupLocation: "X", deliveryLocation: "Y" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderDriverHome();
+
+    expect(await screen.findByText("X → Y")).toBeInTheDocument();
+    expect(screen.queryByText(/TRK-/)).not.toBeInTheDocument();
+  });
+
   test("PASS: no action buttons render on the dashboard — Start/Complete/Upload POD live only on the Jobs page", async () => {
     const job = baseJob({ status: "pending" });
     getJobsByDriver.mockResolvedValue({ data: { data: [job] } });

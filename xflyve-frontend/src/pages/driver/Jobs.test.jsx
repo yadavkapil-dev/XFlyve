@@ -126,4 +126,35 @@ describe("DriverJobs — job status actions", () => {
     expect(await screen.findByText("Truck is out of service")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Start Job" })).toBeEnabled();
   });
+
+  test("PASS: a local job never shows 'Submit Today's Work' — work logs are a whole-day record, submitted from the Logs page's own job-picker", async () => {
+    const job = baseJob({ jobType: "local", status: "pending" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderJobs();
+
+    expect(await screen.findByText("Deliver freight")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit Today’s Work" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Submit Today/i })).not.toBeInTheDocument();
+  });
+
+  test("PASS: a completed job with an uploaded POD no longer shows 'Edit / Replace POD' — that action lives on the POD history page now", async () => {
+    const job = baseJob({ status: "completed" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+    listPodsByDriver.mockResolvedValue({ data: [{ _id: "pod1", jobId: "job1", status: "approved" }] });
+
+    renderJobs();
+
+    expect(await screen.findByText("POD Uploaded ✅")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit / Replace POD" })).not.toBeInTheDocument();
+  });
+
+  test("PASS: an interstate job still shows 'Work Diary Pages' — diary upload has no job-picker of its own to move to", async () => {
+    const job = baseJob({ jobType: "interstate", status: "completed" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderJobs();
+
+    expect(await screen.findByRole("button", { name: "Work Diary Pages" })).toBeInTheDocument();
+  });
 });

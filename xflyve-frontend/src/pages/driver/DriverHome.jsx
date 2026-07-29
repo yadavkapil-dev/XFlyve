@@ -19,6 +19,7 @@ import { getJobsByDriver } from "../../api";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import RouteOutlinedIcon from "@mui/icons-material/RouteOutlined";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import WorkIcon from "@mui/icons-material/Work";
 
@@ -113,8 +114,36 @@ const DashboardSection = ({ title, subtitle, children }) => (
 // Complete, POD upload, work diary) and aren't duplicated on the dashboard.
 // Tapping a job just opens that page, where a driver with multiple same-day
 // jobs can act on any of them individually.
+// Compact echo of driver/Jobs.jsx's DetailItem (icon-in-a-tinted-box +
+// text) — same teal icon-chip language as the full job detail page, just
+// scaled down for a summary row: no Paper/border per item (this already
+// sits inside one bordered card, doesn't need nested boxes), smaller icon
+// tile, no separate label line — the icon itself is the label here.
+const MiniDetailRow = ({ icon, text }) => (
+  <Stack direction="row" spacing={1} alignItems="center">
+    <Box
+      sx={{
+        width: 22,
+        height: 22,
+        borderRadius: 1.5,
+        display: "grid",
+        placeItems: "center",
+        color: palette.teal,
+        bgcolor: alpha(palette.teal, 0.08),
+        flexShrink: 0,
+      }}
+    >
+      {React.cloneElement(icon, { sx: { fontSize: 14 } })}
+    </Box>
+    <Typography variant="caption" noWrap sx={{ color: palette.ink, fontWeight: 700 }}>
+      {text}
+    </Typography>
+  </Stack>
+);
+
 const JobSummaryCard = ({ job, onOpen }) => {
   const statusMeta = getStatusMeta(job.status);
+  const truckNumber = job.assignedTruck?.truckNumber;
 
   return (
     <Card
@@ -128,45 +157,66 @@ const JobSummaryCard = ({ job, onOpen }) => {
       }}
     >
       <CardActionArea onClick={onOpen} sx={{ p: { xs: 2, sm: 2.25 } }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
-          <Box minWidth={0}>
-            <Typography
-              variant="subtitle1"
-              fontWeight={900}
-              noWrap
-              sx={{ color: palette.ink, letterSpacing: "-0.025em" }}
-            >
-              {job.title || "Assigned job"}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-              <Chip
-                label={job.jobType === "interstate" ? "Interstate" : "Local"}
-                size="small"
-                sx={{
-                  color: palette.muted,
-                  bgcolor: alpha(palette.muted, 0.08),
-                  fontWeight: 750,
-                  height: 22,
-                  fontSize: "0.7rem",
-                }}
-              />
-              <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 700 }}>
-                {formatDate(job.jobDate)}
+        <Stack spacing={1.25}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
+            <Box minWidth={0}>
+              <Typography
+                variant="subtitle1"
+                fontWeight={900}
+                noWrap
+                sx={{ color: palette.ink, letterSpacing: "-0.025em" }}
+              >
+                {job.title || "Assigned job"}
               </Typography>
-            </Stack>
-          </Box>
-          <Chip
-            label={statusMeta.label}
-            sx={{
-              flexShrink: 0,
-              color: statusMeta.color,
-              bgcolor: statusMeta.bg,
-              border: "1px solid",
-              borderColor: alpha(statusMeta.color, 0.18),
-              fontWeight: 900,
-              textTransform: "capitalize",
-            }}
-          />
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                <Chip
+                  label={job.jobType === "interstate" ? "Interstate" : "Local"}
+                  size="small"
+                  sx={{
+                    color: palette.muted,
+                    bgcolor: alpha(palette.muted, 0.08),
+                    fontWeight: 750,
+                    height: 22,
+                    fontSize: "0.7rem",
+                  }}
+                />
+                <Typography variant="caption" sx={{ color: palette.muted, fontWeight: 700 }}>
+                  {formatDate(job.jobDate)}
+                </Typography>
+              </Stack>
+            </Box>
+            <Chip
+              label={statusMeta.label}
+              sx={{
+                flexShrink: 0,
+                color: statusMeta.color,
+                bgcolor: statusMeta.bg,
+                border: "1px solid",
+                borderColor: alpha(statusMeta.color, 0.18),
+                fontWeight: 900,
+                textTransform: "capitalize",
+              }}
+            />
+          </Stack>
+
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={{ xs: 0.75, sm: 2.5 }}
+            sx={{ pt: 0.25, borderTop: "1px solid", borderColor: palette.line }}
+            useFlexGap
+          >
+            <Box sx={{ pt: 1.25 }}>
+              <MiniDetailRow
+                icon={<RouteOutlinedIcon />}
+                text={`${job.pickupLocation || "Pickup TBC"} → ${job.deliveryLocation || "Delivery TBC"}`}
+              />
+            </Box>
+            {truckNumber && (
+              <Box sx={{ pt: 1.25 }}>
+                <MiniDetailRow icon={<LocalShippingIcon />} text={truckNumber} />
+              </Box>
+            )}
+          </Stack>
         </Stack>
       </CardActionArea>
     </Card>

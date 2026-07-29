@@ -17,7 +17,6 @@ import { useAuth } from "../../contexts/AuthContext";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import FactCheckIcon from "@mui/icons-material/FactCheck";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
@@ -225,29 +224,20 @@ const DriverJobs = () => {
 
     if (job.status === "completed") {
       if (hasPod) {
+        // Edit/Replace moved to the POD history page (driver/pods/upload) —
+        // it lists every POD, not just this job's, so that's where an edit
+        // action belongs; not duplicated here.
         return (
-          <Stack spacing={1}>
-            <Button
-              fullWidth
-              size="large"
-              variant="contained"
-              startIcon={<CheckCircleOutlineIcon />}
-              disabled
-              sx={{ minHeight: 54, borderRadius: 3, fontWeight: 950 }}
-            >
-              POD Uploaded ✅
-            </Button>
-            <Button
-              fullWidth
-              size="large"
-              variant="outlined"
-              startIcon={<UploadFileIcon />}
-              onClick={() => navigate(`/driver/pods/upload/${job._id}`)}
-              sx={{ minHeight: 50, borderRadius: 3, fontWeight: 900 }}
-            >
-              Edit / Replace POD
-            </Button>
-          </Stack>
+          <Button
+            fullWidth
+            size="large"
+            variant="contained"
+            startIcon={<CheckCircleOutlineIcon />}
+            disabled
+            sx={{ minHeight: 54, borderRadius: 3, fontWeight: 950 }}
+          >
+            POD Uploaded ✅
+          </Button>
         );
       }
 
@@ -393,17 +383,21 @@ const DriverJobs = () => {
 
                     <Stack spacing={1.25}>
                       {renderPrimaryAction(job, linkedPod)}
-                      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 1 }}>
-                        {isInterstateJob ? (
+                      {/* Work logs are a whole-day record, not tied to one
+                          job — the Logs page has its own job-picker, so
+                          there's no "Submit Today's Work" entry point here
+                          for local jobs. Work Diary Pages stays: uploading
+                          a diary requires a job-scoped route
+                          (/driver/work-diary/:id) that the Diary history
+                          page has no equivalent picker for, so this is
+                          still the only way to reach that upload flow. */}
+                      {isInterstateJob && (
+                        <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 1 }}>
                           <Button variant="outlined" startIcon={<DescriptionOutlinedIcon />} onClick={() => navigate(`/driver/work-diary/${job._id}`)} sx={{ minHeight: 46, borderRadius: 3, fontWeight: 850 }}>
                             Work Diary Pages
                           </Button>
-                        ) : (
-                          <Button variant="outlined" startIcon={<FactCheckIcon />} onClick={() => navigate("/driver/logs")} sx={{ minHeight: 46, borderRadius: 3, fontWeight: 850 }}>
-                            Submit Today’s Work
-                          </Button>
-                        )}
-                      </Box>
+                        </Box>
+                      )}
                     </Stack>
                   </Stack>
                 </Paper>

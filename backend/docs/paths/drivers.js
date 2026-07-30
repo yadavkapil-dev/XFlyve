@@ -175,7 +175,6 @@ module.exports = {
                   invoiceReadyJobs: 3,
                   pendingPodApprovals: 2,
                   pendingDiaryApprovals: 1,
-                  pendingWorkLogApprovals: 5,
                   podApprovalRate: 92.5,
                   truckStatusBreakdown: { available: 10, "on-route": 3, "out-of-service": 1 },
                   jobsByStatus: { pending: 12, "in-progress": 4, completed: 88 },

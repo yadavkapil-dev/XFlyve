@@ -25,7 +25,6 @@ const loadController = () => {
   const DailyWorkLog = {
     distinct: jest.fn().mockResolvedValue([]),
     aggregate: jest.fn().mockResolvedValue([]),
-    countDocuments: jest.fn().mockResolvedValue(0),
   };
   const JobPod = { aggregate: jest.fn().mockResolvedValue([]) };
   const WorkDiary = { countDocuments: jest.fn().mockResolvedValue(0) };
@@ -77,7 +76,6 @@ describe("GET /api/admin/dashboard-stats", () => {
       { _id: "pending", count: 2 },
     ]);
     WorkDiary.countDocuments.mockResolvedValueOnce(4);
-    DailyWorkLog.countDocuments.mockResolvedValueOnce(6);
 
     const req = { query: { date: "2026-07-20" } };
     const res = makeResponse();
@@ -100,7 +98,6 @@ describe("GET /api/admin/dashboard-stats", () => {
         invoiceReadyJobs: 2,
         pendingPodApprovals: 2,
         pendingDiaryApprovals: 4,
-        pendingWorkLogApprovals: 6,
         podApprovalRate: 70, // 7 approved / (7 approved + 3 rejected) = 70%
         truckStatusBreakdown: { available: 4, "on-route": 2, "out-of-service": 1 },
         jobsByStatus: { pending: 5, "in-progress": 2, completed: 20 },

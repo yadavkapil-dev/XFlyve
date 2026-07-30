@@ -111,14 +111,10 @@ export const getWorkLogsByDriver = (driverId) => api.get(`/worklogs/${driverId}`
 export const getWorkLogsByCurrentDriver = () => api.get("/worklogs/me");
 
 // ===== WORK LOGS (Admin) =====
-// params: { page, limit, sort, status, dateFrom, dateTo }
+// params: { page, limit, sort, dateFrom, dateTo }
 export const getAllWorkLogsAdmin = (params) => api.get("/worklogs/admin", { params });
 export const getWorkLogsByDriverAdmin = (driverId, params) =>
   api.get(`/worklogs/admin/${driverId}`, { params });
-// params: { page, limit, sort, driverId, dateFrom, dateTo }
-export const getPendingWorkLogsAdmin = (params) => api.get("/worklogs/admin/pending", { params });
-export const approveWorkLogAdmin = (logId) => api.put(`/worklogs/admin/${logId}/approve`);
-export const rejectWorkLogAdmin = (logId, payload) => api.put(`/worklogs/admin/${logId}/reject`, payload);
 
 // Server-side weekly aggregate (logs/hours/km/deliveries), independent of the
 // admin list's current pagination. params: { date, driverId }

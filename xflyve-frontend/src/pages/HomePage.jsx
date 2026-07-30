@@ -67,7 +67,6 @@ const emptyDashboard = {
   invoiceReadyJobs: 0,
   pendingPodApprovals: 0,
   pendingDiaryApprovals: 0,
-  pendingWorkLogApprovals: 0,
   podApprovalRate: null,
   truckStatusBreakdown: { available: 0, "on-route": 0, "out-of-service": 0 },
   jobsByStatus: { pending: 0, "in-progress": 0, completed: 0 },
@@ -799,15 +798,6 @@ const HomePage = () => {
                       tone={dashboard.pendingDiaryApprovals > 0 ? "warning" : "success"}
                     />
                     <AttentionCard
-                      title="Pending Work Log Approvals"
-                      value={dashboard.pendingWorkLogApprovals}
-                      description="Submitted daily work logs awaiting your review."
-                      icon={<FactCheckIcon />}
-                      actionLabel="Review work logs"
-                      onClick={() => navigate("/logs")}
-                      tone={dashboard.pendingWorkLogApprovals > 0 ? "warning" : "success"}
-                    />
-                    <AttentionCard
                       title="Missing Work Logs"
                       value={dashboard.missingWorkLogs}
                       description="Drivers without a work log submitted for today."
@@ -864,7 +854,7 @@ const HomePage = () => {
                     <SummaryRow
                       label="Ready to Invoice"
                       value={dashboard.invoiceReadyJobs}
-                      helper="Completed jobs with approved documents"
+                      helper="Completed jobs with an approved POD"
                     />
                     <SummaryRow
                       label="POD Approval Rate"

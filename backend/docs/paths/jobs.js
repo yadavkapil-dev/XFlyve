@@ -49,7 +49,7 @@ module.exports = {
     get: {
       tags: ["Jobs"],
       summary: "List completed jobs ready to invoice (admin only)",
-      description: "A job (local or interstate) is ready once it's completed and has an approved POD — work diaries/logs are still required for the driver to submit and still go through their own approval workflow, but no longer gate invoicing. Never returns archived, in-progress/pending, or already-invoiced/paid jobs.",
+      description: "A job (local or interstate) is ready once it's completed and has an approved POD — work diaries are still required for the driver to submit and still go through their own approval workflow, and work logs are still required as a submitted record (no approval step), but neither gates invoicing. Never returns archived, in-progress/pending, or already-invoiced/paid jobs.",
       security: h.bearer,
       responses: {
         200: { description: "OK, not paginated.", content: { "application/json": { example: { status: "success", results: 1, data: [{ _id: FAKE_JOB_ID, title: "Sydney to Melbourne freight run", status: "completed", invoiceStatus: "pending" }] } } } },

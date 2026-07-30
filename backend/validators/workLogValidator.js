@@ -1,5 +1,5 @@
 // workLogValidator.js
-const { body, param } = require("express-validator");
+const { body } = require("express-validator");
 
 exports.validateWorkLog = [
   body("date").optional().isISO8601().withMessage("Valid date is required"),
@@ -15,9 +15,4 @@ exports.validateWorkLog = [
   body("jobId").optional().isMongoId().withMessage("Valid job ID is required"),
   body("jobIds").optional().isArray().withMessage("jobIds must be an array"),
   body("jobIds.*").optional().isMongoId().withMessage("Each jobId must be valid"),
-];
-
-exports.rejectWorkLogValidator = [
-  param("logId").isMongoId().withMessage("Valid log ID is required"),
-  body("rejectionReason").trim().notEmpty().withMessage("Rejection reason is required"),
 ];

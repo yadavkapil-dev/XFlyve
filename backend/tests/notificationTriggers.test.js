@@ -394,7 +394,7 @@ describe("Trigger: work diary upload/approve/reject", () => {
 // ---------------------------------------------------------------------------
 // workLogController: create -> notifyAdmins, approve/reject -> notifyUser
 // ---------------------------------------------------------------------------
-describe("Trigger: work log create/approve/reject", () => {
+describe("Trigger: work log create", () => {
   const loadController = () => {
     jest.resetModules();
 
@@ -403,7 +403,6 @@ describe("Trigger: work log create/approve/reject", () => {
       _id: "log-1",
       save: jest.fn().mockResolvedValue(undefined),
     }));
-    DailyWorkLog.findById = jest.fn();
     const Job = { findOne: jest.fn() };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
@@ -444,37 +443,4 @@ describe("Trigger: work log create/approve/reject", () => {
     );
   });
 
-  test("approveWorkLog notifies the log's driver with type worklog_approved", async () => {
-    const { controller, DailyWorkLog, notificationService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const logId = new mongoose.Types.ObjectId().toString();
-    const log = { _id: logId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    DailyWorkLog.findById.mockResolvedValueOnce(log);
-
-    const req = { params: { logId }, user: { id: "admin-1" } };
-    const res = makeResponse();
-
-    await controller.approveWorkLog(req, res);
-
-    expect(notificationService.notifyUser).toHaveBeenCalledWith(
-      expect.objectContaining({ recipient: driverId, type: "worklog_approved", resourceType: "worklog", resourceId: logId })
-    );
-  });
-
-  test("rejectWorkLog notifies the log's driver with type worklog_rejected", async () => {
-    const { controller, DailyWorkLog, notificationService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const logId = new mongoose.Types.ObjectId().toString();
-    const log = { _id: logId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    DailyWorkLog.findById.mockResolvedValueOnce(log);
-
-    const req = { params: { logId }, body: { rejectionReason: "missing hours" }, user: { id: "admin-1" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkLog(req, res);
-
-    expect(notificationService.notifyUser).toHaveBeenCalledWith(
-      expect.objectContaining({ recipient: driverId, type: "worklog_rejected", resourceType: "worklog", resourceId: logId })
-    );
-  });
 });

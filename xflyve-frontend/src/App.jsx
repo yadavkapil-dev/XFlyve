@@ -20,6 +20,7 @@ import AssignTruck from "./pages/admin/AssignTruck";
 import WorkDiary from "./pages/admin/WorkDiary";
 import WorkLogs from "./pages/admin/WorkLogs";
 import PodsList from "./pages/admin/PodsList";
+import Invoicing from "./pages/admin/Invoicing";
 
 // Driver pages (import from driver folder)
 import DriverHome from "./pages/driver/DriverHome";
@@ -54,6 +55,7 @@ function App() {
               <Route path="/logs" element={<WorkLogs />} />
               <Route path="/pods" element={<PodsList />} />
               <Route path="/work-diary" element={<WorkDiary />} />
+              <Route path="/invoicing" element={<Invoicing />} />
             </Route>
 
             {/* Driver routes */}

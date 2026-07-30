@@ -12,8 +12,6 @@ const NOTIFICATION_TYPES = [
   "diary_approved",
   "diary_rejected",
   "worklog_submitted",
-  "worklog_approved",
-  "worklog_rejected",
 ];
 
 const RESOURCE_TYPES = ["job", "jobpod", "workdiary", "worklog"];

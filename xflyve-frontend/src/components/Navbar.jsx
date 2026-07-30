@@ -24,6 +24,7 @@ import LocalShippingRoundedIcon from "@mui/icons-material/LocalShippingRounded";
 import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
 import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
 import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
+import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import NotificationBell from "./NotificationBell";
@@ -52,6 +53,7 @@ const getNavigationItems = (role) => {
       { label: "Logs", path: "/logs", icon: <FactCheckRoundedIcon fontSize="small" /> },
       { label: "PODs", path: "/pods", icon: <UploadFileRoundedIcon fontSize="small" /> },
       { label: "Work Diary", path: "/work-diary", icon: <MenuBookRoundedIcon fontSize="small" /> },
+      { label: "Invoicing", path: "/invoicing", icon: <ReceiptLongRoundedIcon fontSize="small" /> },
       { label: "Drivers", path: "/drivers", icon: <PeopleAltRoundedIcon fontSize="small" /> },
       { label: "Trucks", path: "/trucks", icon: <LocalShippingRoundedIcon fontSize="small" /> },
     ];

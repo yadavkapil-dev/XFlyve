@@ -84,6 +84,20 @@ describe("Flow: work-log ownership", () => {
     expect(res.status).toBe(403);
   });
 
+  test("PASS: an admin CAN update any driver's work log, end to end through the real route", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const logId = await createLogForDriver(driver);
+
+    const res = await request(app)
+      .put(`/api/worklogs/${logId}`)
+      .set("Authorization", authHeader(admin))
+      .send({ notes: "corrected by admin" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.notes).toBe("corrected by admin");
+  });
+
   test("PASS: a driver cannot delete another driver's work log (403)", async () => {
     const driverA = await createDriver({ role: "driver" });
     const driverB = await createDriver({ role: "driver" });
@@ -94,6 +108,23 @@ describe("Flow: work-log ownership", () => {
       .set("Authorization", authHeader(driverB));
 
     expect(res.status).toBe(403);
+  });
+
+  test("PASS: an admin CAN delete any driver's work log, end to end through the real route", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const logId = await createLogForDriver(driver);
+
+    const res = await request(app)
+      .delete(`/api/worklogs/${logId}`)
+      .set("Authorization", authHeader(admin));
+
+    expect(res.status).toBe(200);
+
+    const listRes = await request(app)
+      .get("/api/worklogs/admin")
+      .set("Authorization", authHeader(admin));
+    expect(listRes.body.data.find((log) => log._id === logId)).toBeUndefined();
   });
 });
 

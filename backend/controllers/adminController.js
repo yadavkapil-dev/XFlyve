@@ -189,7 +189,6 @@ exports.getDashboardStats = async (req, res) => {
       jobVolumeAgg,
       podStatusAgg,
       pendingDiaryApprovals,
-      pendingWorkLogApprovals,
       invoiceReadyJobs,
     ] = await Promise.all([
       Job.aggregate([
@@ -231,7 +230,6 @@ exports.getDashboardStats = async (req, res) => {
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
       WorkDiary.countDocuments({ status: "pending" }),
-      DailyWorkLog.countDocuments({ status: "pending" }),
       // Reuses the exact same business rule the real "ready to invoice" list
       // uses (Job.findReadyForInvoicing, unit-tested in Phase 7A) rather
       // than re-deriving local/interstate/POD/diary eligibility here a
@@ -292,7 +290,6 @@ exports.getDashboardStats = async (req, res) => {
         invoiceReadyJobs: invoiceReadyJobs.length,
         pendingPodApprovals: podCounts.pending || 0,
         pendingDiaryApprovals,
-        pendingWorkLogApprovals,
         podApprovalRate,
         truckStatusBreakdown,
         jobsByStatus,

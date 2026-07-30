@@ -14,7 +14,7 @@ router.use(authMiddleware);
 // Admin-only: Get all jobs
 router.get("/", requireAdmin, jobController.getAllJobs);
 
-// Admin-only: Jobs with completed work and approved documents
+// Admin-only: Jobs with completed work and an approved POD
 router.get("/admin/ready-for-invoicing", requireAdmin, jobController.getJobsReadyForInvoicing);
 
 // Admin-only: Create new job

@@ -1,4 +1,4 @@
-// Integration: POD workflow, Diary workflow, Work-log workflow. Real app,
+// Integration: POD workflow, Diary workflow. Real app,
 // real routes/middleware/controllers, real Mongoose models, against an
 // isolated in-memory MongoDB (see testDb.js).
 //
@@ -28,7 +28,6 @@ const { startTestDb, stopTestDb, clearTestDb } = require("./testDb");
 const { createDriver, createTruck, createJob, tomorrow, authHeader } = require("./factories");
 const JobPod = require("../../models/jobPod");
 const WorkDiary = require("../../models/workDiary");
-const DailyWorkLog = require("../../models/dailyWorkLog");
 const Notification = require("../../models/notification");
 const Activity = require("../../models/activity");
 
@@ -238,75 +237,5 @@ describe("Flow: Diary workflow", () => {
 
     const stored = await WorkDiary.findOne({ jobId: job._id }).lean();
     expect(stored).toBeNull();
-  });
-});
-
-describe("Flow: Work-log workflow", () => {
-  test("PASS: driver submits a daily work log -> admin approves it", async () => {
-    const admin = await createDriver({ role: "admin" });
-    const driver = await createDriver({ role: "driver" });
-    const job = await createJob({ assignedTo: driver, jobType: "local" });
-
-    const createRes = await request(app)
-      .post("/api/worklogs")
-      .set("Authorization", authHeader(driver))
-      .send({
-        date: tomorrow(),
-        jobId: job._id.toString(),
-        localStartTime: "08:00",
-        localEndTime: "16:00",
-        hours: 8,
-        deliveriesDone: 5,
-      });
-
-    expect(createRes.status).toBe(201);
-    const logId = createRes.body.data._id;
-
-    const submittedNotif = await Notification.findOne({ recipient: admin._id, type: "worklog_submitted" }).lean();
-    expect(submittedNotif).toBeTruthy();
-    const submittedActivity = await Activity.findOne({ action: "WORK_LOG_SUBMITTED", resourceId: logId }).lean();
-    expect(submittedActivity).toBeTruthy();
-
-    const approveRes = await request(app)
-      .put(`/api/worklogs/admin/${logId}/approve`)
-      .set("Authorization", authHeader(admin));
-
-    expect(approveRes.status).toBe(200);
-
-    const persisted = await DailyWorkLog.findById(logId).lean();
-    expect(persisted.status).toBe("approved");
-
-    const approvedNotif = await Notification.findOne({ recipient: driver._id, type: "worklog_approved" }).lean();
-    expect(approvedNotif).toBeTruthy();
-    const approvedActivity = await Activity.findOne({ action: "WORK_LOG_APPROVED", resourceId: logId }).lean();
-    expect(approvedActivity).toBeTruthy();
-  });
-
-  test("PASS: a driver cannot edit their own approved work log (locked business rule, enforced end to end)", async () => {
-    const admin = await createDriver({ role: "admin" });
-    const driver = await createDriver({ role: "driver" });
-    const job = await createJob({ assignedTo: driver, jobType: "local" });
-
-    const createRes = await request(app)
-      .post("/api/worklogs")
-      .set("Authorization", authHeader(driver))
-      .send({
-        date: tomorrow(),
-        jobId: job._id.toString(),
-        localStartTime: "08:00",
-        localEndTime: "16:00",
-        hours: 8,
-        deliveriesDone: 5,
-      });
-    const logId = createRes.body.data._id;
-
-    await request(app).put(`/api/worklogs/admin/${logId}/approve`).set("Authorization", authHeader(admin));
-
-    const editRes = await request(app)
-      .put(`/api/worklogs/${logId}`)
-      .set("Authorization", authHeader(driver))
-      .send({ notes: "trying to sneak an edit in" });
-
-    expect(editRes.status).toBe(409);
   });
 });

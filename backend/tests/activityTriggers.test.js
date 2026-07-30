@@ -506,17 +506,15 @@ describe("Activity: work diary upload/approve/reject", () => {
 // ---------------------------------------------------------------------------
 // workLogController: WORK_LOG_SUBMITTED / WORK_LOG_APPROVED / WORK_LOG_REJECTED
 // ---------------------------------------------------------------------------
-describe("Activity: work log create/approve/reject", () => {
+describe("Activity: work log create", () => {
   const loadController = () => {
     jest.resetModules();
 
     const DailyWorkLog = jest.fn().mockImplementation((data) => ({
       ...data,
       _id: "log-1",
-      status: "pending",
       save: jest.fn().mockResolvedValue(undefined),
     }));
-    DailyWorkLog.findById = jest.fn();
     const Job = { findOne: jest.fn() };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
@@ -565,55 +563,4 @@ describe("Activity: work log create/approve/reject", () => {
     );
   });
 
-  test("approveWorkLog logs WORK_LOG_APPROVED, actor = admin, resource = the log", async () => {
-    const { controller, DailyWorkLog, activityService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const logId = new mongoose.Types.ObjectId().toString();
-    const jobId = new mongoose.Types.ObjectId().toString();
-    const adminId = new mongoose.Types.ObjectId().toString();
-    const log = { _id: logId, driverId, jobIds: [jobId], status: "pending", save: jest.fn().mockResolvedValue(undefined) };
-    DailyWorkLog.findById.mockResolvedValueOnce(log);
-
-    const req = { params: { logId }, user: { id: adminId, role: "admin" } };
-    const res = makeResponse();
-
-    await controller.approveWorkLog(req, res);
-
-    expect(activityService.logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorId: adminId,
-        actorRole: "admin",
-        action: "WORK_LOG_APPROVED",
-        resourceType: "worklog",
-        resourceId: logId,
-        relatedJobId: jobId,
-      })
-    );
-  });
-
-  test("rejectWorkLog logs WORK_LOG_REJECTED with the rejection reason in metadata", async () => {
-    const { controller, DailyWorkLog, activityService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const logId = new mongoose.Types.ObjectId().toString();
-    const adminId = new mongoose.Types.ObjectId().toString();
-    const log = { _id: logId, driverId, jobIds: [], status: "pending", save: jest.fn().mockResolvedValue(undefined) };
-    DailyWorkLog.findById.mockResolvedValueOnce(log);
-
-    const req = { params: { logId }, body: { rejectionReason: "missing hours" }, user: { id: adminId, role: "admin" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkLog(req, res);
-
-    expect(activityService.logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorId: adminId,
-        actorRole: "admin",
-        action: "WORK_LOG_REJECTED",
-        resourceType: "worklog",
-        resourceId: logId,
-        relatedJobId: null,
-        metadata: { rejectionReason: "missing hours" },
-      })
-    );
-  });
 });

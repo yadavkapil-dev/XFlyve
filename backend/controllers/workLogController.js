@@ -1,13 +1,11 @@
 const mongoose = require("mongoose");
 const DailyWorkLog = require("../models/dailyWorkLog");
 const Job = require("../models/job");
-const Driver = require("../models/driver");
 const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter, normalizeDateOnly: normalizeQueryDate, getMondayStartWeekRange } = require("../utils/dateRange");
-const { notifyUser, notifyAdmins } = require("../services/notificationService");
+const { notifyAdmins } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
-const { sendDocumentRejectedEmail } = require("../services/emailService");
 
 const WORKLOG_SORT_FIELDS = ["workDate", "date", "createdAt"];
 const WORKLOG_DEFAULT_SORT = { workDate: -1, date: -1 };
@@ -175,7 +173,7 @@ exports.createWorkLog = async (req, res) => {
       resourceType: "worklog",
       resourceId: newLog._id,
       relatedJobId: newLog.jobIds?.[0] || null,
-      after: { status: newLog.status, jobIds: newLog.jobIds },
+      after: { jobIds: newLog.jobIds },
     });
 
     return res.status(201).json({
@@ -299,13 +297,6 @@ exports.updateWorkLog = async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    if (userRole === "driver" && log.status === "approved") {
-      return res.status(409).json({
-        success: false,
-        message: "Approved records are locked and cannot be edited",
-      });
-    }
-
     if (updates.date || updates.workDate) {
       const normalizedWorkDate = normalizeDateOnly(updates.workDate || updates.date);
       if (!normalizedWorkDate) {
@@ -340,13 +331,6 @@ exports.updateWorkLog = async (req, res) => {
     }
 
     Object.assign(log, updates);
-
-    if (userRole === "driver" && log.status === "rejected") {
-      log.status = "pending";
-      log.rejectedBy = null;
-      log.rejectedAt = null;
-      log.rejectionReason = undefined;
-    }
 
     await log.save();
 
@@ -386,13 +370,6 @@ exports.deleteWorkLog = async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    if (userRole === "driver" && log.status === "approved") {
-      return res.status(409).json({
-        success: false,
-        message: "Approved records are locked and cannot be deleted",
-      });
-    }
-
     await log.deleteOne();
 
     return res.status(200).json({
@@ -405,128 +382,13 @@ exports.deleteWorkLog = async (req, res) => {
   }
 };
 
-exports.approveWorkLog = async (req, res) => {
-  const { logId } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(logId)) {
-    return res.status(400).json({ success: false, message: "Invalid logId" });
-  }
-
-  try {
-    const log = await DailyWorkLog.findById(logId);
-    if (!log) return res.status(404).json({ success: false, message: "Work log not found" });
-
-    const previousStatus = log.status;
-
-    log.status = "approved";
-    log.approvedBy = req.user.id;
-    log.approvedAt = new Date();
-    log.rejectedBy = null;
-    log.rejectedAt = null;
-    log.rejectionReason = undefined;
-
-    await log.save();
-
-    await notifyUser({
-      recipient: log.driverId,
-      type: "worklog_approved",
-      title: "Work log approved",
-      message: "Your daily work log has been approved.",
-      resourceType: "worklog",
-      resourceId: log._id,
-    });
-
-    await logActivity({
-      actorId: req.user.id,
-      actorRole: req.user.role,
-      action: "WORK_LOG_APPROVED",
-      resourceType: "worklog",
-      resourceId: log._id,
-      relatedJobId: log.jobIds?.[0] || null,
-      before: { status: previousStatus },
-      after: { status: log.status },
-    });
-
-    return res.status(200).json({ success: true, message: "Daily record approved", data: log });
-  } catch (err) {
-    logger.error("Approve WorkLog error: %o", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-exports.rejectWorkLog = async (req, res) => {
-  const { logId } = req.params;
-  const { rejectionReason } = req.body;
-
-  if (!mongoose.Types.ObjectId.isValid(logId)) {
-    return res.status(400).json({ success: false, message: "Invalid logId" });
-  }
-
-  try {
-    const log = await DailyWorkLog.findById(logId);
-    if (!log) return res.status(404).json({ success: false, message: "Work log not found" });
-
-    const previousStatus = log.status;
-
-    log.status = "rejected";
-    log.rejectedBy = req.user.id;
-    log.rejectedAt = new Date();
-    log.rejectionReason = rejectionReason;
-    log.approvedBy = null;
-    log.approvedAt = null;
-
-    await log.save();
-
-    await notifyUser({
-      recipient: log.driverId,
-      type: "worklog_rejected",
-      title: "Work log rejected",
-      message: rejectionReason
-        ? `Your daily work log was rejected: ${rejectionReason}`
-        : "Your daily work log was rejected.",
-      resourceType: "worklog",
-      resourceId: log._id,
-    });
-
-    // In addition to the in-app notification above, not a replacement.
-    // Own try/catch so a failure here (the driver lookup or the send
-    // itself) can never turn an already-successful rejection into a
-    // failed response — the log.save() above has already committed.
-    try {
-      const rejectedDriver = await Driver.findById(log.driverId).select("email").lean();
-      if (rejectedDriver?.email) {
-        sendDocumentRejectedEmail(rejectedDriver.email, { documentType: "worklog", reason: rejectionReason });
-      }
-    } catch (err) {
-      logger.error("Failed to send work log rejected email: %o", err);
-    }
-
-    await logActivity({
-      actorId: req.user.id,
-      actorRole: req.user.role,
-      action: "WORK_LOG_REJECTED",
-      resourceType: "worklog",
-      resourceId: log._id,
-      relatedJobId: log.jobIds?.[0] || null,
-      before: { status: previousStatus },
-      after: { status: log.status },
-      metadata: { rejectionReason: log.rejectionReason },
-    });
-
-    return res.status(200).json({ success: true, message: "Daily record rejected", data: log });
-  } catch (err) {
-    logger.error("Reject WorkLog error: %o", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
 // ------------- NEW: Admin Get All Work Logs or by Driver -------------
 /**
  * @desc Get all daily work logs or filter by driverId (Admin only)
  * @route GET /api/worklogs/admin/:driverId?
  * @access Admin only
  */
-// Query params: page, limit, sort (workDate|date|createdAt), status,
+// Query params: page, limit, sort (workDate|date|createdAt),
 // dateFrom/dateTo (workDate range). driverId comes from the URL param
 // (GET /worklogs/admin/:driverId) when present.
 exports.getAllLogsForAdmin = async (req, res) => {
@@ -543,8 +405,6 @@ exports.getAllLogsForAdmin = async (req, res) => {
       }
       query.driverId = driverId;
     }
-
-    if (req.query.status) query.status = req.query.status;
 
     const dateFilter = buildDateRangeFilter("workDate", { from: req.query.dateFrom, to: req.query.dateTo });
     if (dateFilter) Object.assign(query, dateFilter);
@@ -567,41 +427,6 @@ exports.getAllLogsForAdmin = async (req, res) => {
     });
   } catch (err) {
     logger.error("Admin get all logs error: %o", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Query params: page, limit, sort (workDate|date|createdAt), driverId,
-// dateFrom/dateTo (workDate range).
-exports.getPendingLogsForAdmin = async (req, res) => {
-  try {
-    const { page, limit, skip } = parsePagination(req.query);
-    const sort = parseSort(req.query.sort, WORKLOG_SORT_FIELDS, WORKLOG_DEFAULT_SORT);
-
-    const query = { status: "pending" };
-    if (req.query.driverId && mongoose.Types.ObjectId.isValid(req.query.driverId)) {
-      query.driverId = req.query.driverId;
-    }
-    const dateFilter = buildDateRangeFilter("workDate", { from: req.query.dateFrom, to: req.query.dateTo });
-    if (dateFilter) Object.assign(query, dateFilter);
-
-    const [logs, total] = await Promise.all([
-      DailyWorkLog.find(query)
-        .populate("driverId", "name email")
-        .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType")
-        .sort(sort)
-        .skip(skip)
-        .limit(limit),
-      DailyWorkLog.countDocuments(query),
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      data: logs,
-      pagination: buildPaginationMeta({ page, limit, total }),
-    });
-  } catch (err) {
-    logger.error("Admin get pending logs error: %o", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };

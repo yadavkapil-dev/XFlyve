@@ -11,7 +11,6 @@
 const jobController = require("../../../controllers/jobController");
 const truckController = require("../../../controllers/truckController");
 const jobPodController = require("../../../controllers/jobPodController");
-const workLogController = require("../../../controllers/workLogController");
 const adminController = require("../../../controllers/adminController");
 const { requireAdmin, requireDriver } = require("../../../middlewares/roleMiddleware");
 const { normalizeDateOnly } = require("../../../utils/dateRange");
@@ -45,25 +44,21 @@ const getAvailableTrucks = (user) =>
 const getPendingPods = (user) =>
   runProtected([requireAdmin], jobPodController.listPendingPODApprovals, buildReq(user));
 
-// Combines two existing admin, status-filterable list endpoints:
-// GET /api/jobpods/admin/all?status=rejected and
-// GET /api/worklogs/admin?status=rejected (both requireAdmin).
+// GET /api/jobpods/admin/all?status=rejected (requireAdmin).
 //
+// Work logs no longer have any approval/rejection concept (a submitted log
+// is just a record), so this no longer combines in rejected work logs.
 // Deliberately does NOT include rejected work diaries: there is no existing
 // backend endpoint that returns them (workDiaryController only exposes
 // listPendingWorkDiaryApprovals, hardcoded to status:"pending" — no
 // "list all"/status-filterable route exists for work diaries the way it
-// does for PODs and work logs). Flagged to the user rather than adding a
-// new backend endpoint to fill the gap, per the "reuse existing backend
-// logic only" instruction for this phase.
+// does for PODs). Flagged to the user rather than adding a new backend
+// endpoint to fill the gap, per the "reuse existing backend logic only"
+// instruction for this phase.
 const getRejectedDocuments = async (user) => {
-  const [pods, workLogs] = await Promise.all([
-    runProtected([requireAdmin], jobPodController.listAllPODs, buildReq(user, { query: { status: "rejected" } })),
-    runProtected([requireAdmin], workLogController.getAllLogsForAdmin, buildReq(user, { query: { status: "rejected" } })),
-  ]);
+  const pods = await runProtected([requireAdmin], jobPodController.listAllPODs, buildReq(user, { query: { status: "rejected" } }));
 
   if (pods.statusCode !== 200) return pods;
-  if (workLogs.statusCode !== 200) return workLogs;
 
   return {
     statusCode: 200,
@@ -71,7 +66,6 @@ const getRejectedDocuments = async (user) => {
       status: "success",
       data: {
         rejectedPods: pods.body.data,
-        rejectedWorkLogs: workLogs.body.data,
       },
     },
   };

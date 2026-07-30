@@ -120,8 +120,8 @@ test("admin creates a job through to invoicing readiness, with the driver comple
   });
 
   await test.step("Verify invoice readiness", async () => {
-    await adminPage.goto("/logs");
-    await expect(adminPage.getByText("Ready to invoice")).toBeVisible();
+    await adminPage.goto("/invoicing");
+    await expect(adminPage.getByText("Ready to invoice").first()).toBeVisible();
     await expect(adminPage.getByText(JOB_TITLE)).toBeVisible({ timeout: 10_000 });
   });
 

@@ -53,7 +53,7 @@ describe("Flow: dashboard-stats Phase 11 metrics, against real seeded data", () 
     expect(res.body.data.invoiceReadyJobs).toBe(1);
   });
 
-  test("PASS: pendingPodApprovals / pendingDiaryApprovals / pendingWorkLogApprovals match real pending counts, excluding approved/rejected", async () => {
+  test("PASS: pendingPodApprovals / pendingDiaryApprovals match real pending counts, excluding approved/rejected", async () => {
     const admin = await createDriver({ role: "admin" });
     const driver = await createDriver({ role: "driver" });
 
@@ -64,14 +64,11 @@ describe("Flow: dashboard-stats Phase 11 metrics, against real seeded data", () 
     await WorkDiary.create({ driverId: driver._id, fileUrl: "https://example.com/d.pdf", status: "pending" });
     await WorkDiary.create({ driverId: driver._id, fileUrl: "https://example.com/e.pdf", status: "rejected" });
 
-    await DailyWorkLog.create({ driverId: driver._id, date: new Date(), workDate: new Date(), status: "pending" });
-
     const res = await request(app).get("/api/admin/dashboard-stats").set("Authorization", authHeader(admin));
 
     expect(res.status).toBe(200);
     expect(res.body.data.pendingPodApprovals).toBe(2);
     expect(res.body.data.pendingDiaryApprovals).toBe(1);
-    expect(res.body.data.pendingWorkLogApprovals).toBe(1);
   });
 
   test("PASS: podApprovalRate reflects real approved/rejected counts and is null with no decided PODs", async () => {
@@ -154,7 +151,6 @@ describe("Flow: dashboard-stats Phase 11 metrics, against real seeded data", () 
       driverId: driverWithLog._id,
       date: new Date(),
       workDate: new Date(),
-      status: "pending",
     });
 
     const res = await request(app).get("/api/admin/dashboard-stats").set("Authorization", authHeader(admin));

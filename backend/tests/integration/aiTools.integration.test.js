@@ -13,7 +13,6 @@ process.env.NODE_ENV = "test";
 const { startTestDb, stopTestDb, clearTestDb } = require("./testDb");
 const { createDriver, createTruck, createJob, tomorrow } = require("./factories");
 const JobPod = require("../../models/jobPod");
-const DailyWorkLog = require("../../models/dailyWorkLog");
 
 let tools;
 
@@ -120,7 +119,7 @@ describe("getPendingPods: admin-only, enforced by the real requireAdmin middlewa
   });
 });
 
-describe("getRejectedDocuments: admin-only, combines two existing status-filterable endpoints", () => {
+describe("getRejectedDocuments: admin-only, reuses an existing status-filterable endpoint", () => {
   test("a driver gets a 403, never any rejected documents", async () => {
     const driver = await createDriver();
 
@@ -130,7 +129,7 @@ describe("getRejectedDocuments: admin-only, combines two existing status-filtera
     expect(result.body.data).toBeUndefined();
   });
 
-  test("an admin gets rejected PODs and rejected work logs, with rejection reasons", async () => {
+  test("an admin gets rejected PODs, with rejection reasons", async () => {
     const admin = await createDriver({ role: "admin" });
     const driver = await createDriver();
 
@@ -140,20 +139,13 @@ describe("getRejectedDocuments: admin-only, combines two existing status-filtera
       status: "rejected",
       rejectionReason: "blurry photo",
     });
-    await DailyWorkLog.create({
-      driverId: driver._id,
-      date: new Date(),
-      status: "rejected",
-      rejectionReason: "missing hours",
-    });
 
     const result = await tools.getRejectedDocuments(asUser(admin));
 
     expect(result.statusCode).toBe(200);
     expect(result.body.data.rejectedPods).toHaveLength(1);
     expect(result.body.data.rejectedPods[0].rejectionReason).toBe("blurry photo");
-    expect(result.body.data.rejectedWorkLogs).toHaveLength(1);
-    expect(result.body.data.rejectedWorkLogs[0].rejectionReason).toBe("missing hours");
+    expect(result.body.data.rejectedWorkLogs).toBeUndefined();
   });
 });
 

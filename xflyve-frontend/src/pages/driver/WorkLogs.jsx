@@ -29,12 +29,6 @@ import {
   deleteWorkLog,
 } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
-import { useNotifications } from "../../contexts/NotificationContext";
-
-// Real-time event types that mean "this page's log data is now stale" — an
-// admin approving/rejecting a log while this page is open. worklog_submitted
-// isn't included: that notifies admins, not the driver.
-const RELEVANT_WORKLOG_EVENTS = ["worklog_approved", "worklog_rejected"];
 
 const palette = {
   ink: "#0b1220",
@@ -45,10 +39,6 @@ const palette = {
   heroMid: "#0b2f3a",
   heroEnd: "#0c5f5b",
   teal: "#0e7c76",
-  blue: "#2563eb",
-  emerald: "#07866f",
-  amber: "#b76e00",
-  rose: "#b42318",
 };
 
 const initialLog = {
@@ -112,12 +102,6 @@ const clearFieldsForJobType = (fields, jobType) => {
   };
 };
 
-const getStatusMeta = (status = "pending") => {
-  if (status === "approved") return { label: "Approved", color: palette.emerald };
-  if (status === "rejected") return { label: "Rejected", color: palette.rose };
-  return { label: "Pending approval", color: palette.amber };
-};
-
 const StatPill = ({ icon, label, value }) => (
   <Paper elevation={0} sx={{ p: 1.5, borderRadius: 3, border: "1px solid", borderColor: palette.line, bgcolor: alpha("#fff", 0.72) }}>
     <Stack direction="row" spacing={1.25} alignItems="center">
@@ -135,7 +119,6 @@ const StatPill = ({ icon, label, value }) => (
 const DriverWorkLogs = () => {
   const { user } = useAuth();
   const driverId = user?._id || user?.id;
-  const { lastEvent } = useNotifications();
 
   const [logs, setLogs] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -176,16 +159,6 @@ const DriverWorkLogs = () => {
     fetchLogs();
     fetchJobs();
   }, [fetchLogs, fetchJobs]);
-
-  // Admin approves/rejects a work log while this page happens to be open —
-  // re-run the exact same fetch this page already uses on mount, so the
-  // status shown here never needs a manual refresh to catch up.
-  useEffect(() => {
-    if (!lastEvent) return;
-    if (RELEVANT_WORKLOG_EVENTS.includes(lastEvent.type)) {
-      fetchLogs();
-    }
-  }, [lastEvent, fetchLogs]);
 
   const todaysLog = useMemo(() => {
     const todayKey = new Date().toLocaleDateString("en-CA");
@@ -437,11 +410,7 @@ const DriverWorkLogs = () => {
           </Paper>
         ) : (
           <Stack spacing={2}>
-            {logs.map((log) => {
-              const statusMeta = getStatusMeta(log.status);
-              const isApproved = log.status === "approved";
-
-              return (
+            {logs.map((log) => (
               <Paper key={log._id} elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
                 {editingId === log._id ? (
                   <Stack spacing={2}>
@@ -462,24 +431,10 @@ const DriverWorkLogs = () => {
                         <Typography variant="body2" sx={{ color: palette.muted }}>{log.notes || "No notes added."}</Typography>
                       </Box>
                       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
-                        <Chip
-                          size="small"
-                          label={isApproved ? "Approved by admin — locked" : statusMeta.label}
-                          sx={{ color: statusMeta.color, bgcolor: alpha(statusMeta.color, 0.1), fontWeight: 900 }}
-                        />
-                        {!isApproved && (
-                          <>
-                            <IconButton aria-label="edit Today’s Work" onClick={() => startEditing(log)}><EditIcon /></IconButton>
-                            <IconButton aria-label="delete Today’s Work" onClick={() => handleDelete(log._id)} color="error" disabled={processing}><DeleteIcon /></IconButton>
-                          </>
-                        )}
+                        <IconButton aria-label="edit Today’s Work" onClick={() => startEditing(log)}><EditIcon /></IconButton>
+                        <IconButton aria-label="delete Today’s Work" onClick={() => handleDelete(log._id)} color="error" disabled={processing}><DeleteIcon /></IconButton>
                       </Stack>
                     </Stack>
-                    {log.status === "rejected" && log.rejectionReason && (
-                      <Alert severity="error" sx={{ borderRadius: 3 }}>
-                        Rejection reason: {log.rejectionReason}
-                      </Alert>
-                    )}
                     {renderLogStats(log)}
                     {Array.isArray(log.deliveryLocations) && log.deliveryLocations.length > 0 && (
                       <Chip icon={<LocalShippingIcon />} label={log.deliveryLocations.join(", ")} sx={{ alignSelf: "flex-start", maxWidth: "100%" }} />
@@ -487,8 +442,7 @@ const DriverWorkLogs = () => {
                   </Stack>
                 )}
               </Paper>
-              );
-            })}
+            ))}
           </Stack>
         )}
       </Box>

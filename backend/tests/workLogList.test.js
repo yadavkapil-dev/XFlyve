@@ -84,18 +84,6 @@ describe("GET /api/worklogs/admin (getAllLogsForAdmin) — pagination/filter/sor
     expect(DailyWorkLog.find).toHaveBeenCalledWith(expect.objectContaining({ driverId: VALID_DRIVER_ID }));
   });
 
-  test("filter: status (approval status)", async () => {
-    const { controller, DailyWorkLog } = loadController();
-    const chain = findChain([]);
-    DailyWorkLog.find.mockReturnValueOnce(chain);
-    DailyWorkLog.countDocuments.mockResolvedValueOnce(0);
-
-    const res = makeResponse();
-    await controller.getAllLogsForAdmin({ params: {}, query: { status: "approved" } }, res);
-
-    expect(DailyWorkLog.find).toHaveBeenCalledWith(expect.objectContaining({ status: "approved" }));
-  });
-
   test("filter: date range on workDate", async () => {
     const { controller, DailyWorkLog } = loadController();
     const chain = findChain([]);
@@ -110,7 +98,7 @@ describe("GET /api/worklogs/admin (getAllLogsForAdmin) — pagination/filter/sor
     expect(calledQuery.workDate.$lt.toISOString()).toBe("2026-07-08T00:00:00.000Z");
   });
 
-  test("combined driverId + status + date range + pagination", async () => {
+  test("combined driverId + date range + pagination", async () => {
     const { controller, DailyWorkLog } = loadController();
     const chain = findChain([{ _id: "log1" }]);
     DailyWorkLog.find.mockReturnValueOnce(chain);
@@ -120,76 +108,15 @@ describe("GET /api/worklogs/admin (getAllLogsForAdmin) — pagination/filter/sor
     await controller.getAllLogsForAdmin(
       {
         params: { driverId: VALID_DRIVER_ID },
-        query: { status: "pending", dateFrom: "2026-07-01", page: "1", limit: "5" },
+        query: { dateFrom: "2026-07-01", page: "1", limit: "5" },
       },
       res
     );
 
     const calledQuery = DailyWorkLog.find.mock.calls[0][0];
     expect(calledQuery.driverId).toBe(VALID_DRIVER_ID);
-    expect(calledQuery.status).toBe("pending");
     expect(calledQuery.workDate.$gte).toBeDefined();
     expect(chain.limit).toHaveBeenCalledWith(5);
-  });
-});
-
-describe("GET /api/worklogs/admin/pending (getPendingLogsForAdmin) — real pagination, no more slice(0,4)", () => {
-  afterEach(() => jest.restoreAllMocks());
-
-  test("returns pagination metadata instead of a silently truncated list", async () => {
-    const { controller, DailyWorkLog } = loadController();
-    // 12 pending logs exist; the endpoint should report the real total via
-    // pagination, not just whatever the frontend used to slice(0, 4).
-    const chain = findChain(new Array(12).fill({ _id: "log" }));
-    DailyWorkLog.find.mockReturnValueOnce(chain);
-    DailyWorkLog.countDocuments.mockResolvedValueOnce(12);
-
-    const res = makeResponse();
-    await controller.getPendingLogsForAdmin({ query: {} }, res);
-
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ pagination: { page: 1, limit: 20, total: 12, totalPages: 1 } })
-    );
-  });
-
-  test("page 2 with a smaller limit paginates correctly", async () => {
-    const { controller, DailyWorkLog } = loadController();
-    const chain = findChain([]);
-    DailyWorkLog.find.mockReturnValueOnce(chain);
-    DailyWorkLog.countDocuments.mockResolvedValueOnce(12);
-
-    const res = makeResponse();
-    await controller.getPendingLogsForAdmin({ query: { page: "2", limit: "4" } }, res);
-
-    expect(chain.skip).toHaveBeenCalledWith(4);
-    expect(chain.limit).toHaveBeenCalledWith(4);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ pagination: { page: 2, limit: 4, total: 12, totalPages: 3 } })
-    );
-  });
-
-  test("always fixes status to pending", async () => {
-    const { controller, DailyWorkLog } = loadController();
-    const chain = findChain([]);
-    DailyWorkLog.find.mockReturnValueOnce(chain);
-    DailyWorkLog.countDocuments.mockResolvedValueOnce(0);
-
-    const res = makeResponse();
-    await controller.getPendingLogsForAdmin({ query: { status: "approved" } }, res);
-
-    expect(DailyWorkLog.find).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
-  });
-
-  test("filter: driverId", async () => {
-    const { controller, DailyWorkLog } = loadController();
-    const chain = findChain([]);
-    DailyWorkLog.find.mockReturnValueOnce(chain);
-    DailyWorkLog.countDocuments.mockResolvedValueOnce(0);
-
-    const res = makeResponse();
-    await controller.getPendingLogsForAdmin({ query: { driverId: VALID_DRIVER_ID } }, res);
-
-    expect(DailyWorkLog.find).toHaveBeenCalledWith(expect.objectContaining({ driverId: VALID_DRIVER_ID }));
   });
 });
 

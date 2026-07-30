@@ -29,12 +29,12 @@ const TOOL_DEFINITIONS = [
     name: "getRejectedDocuments",
     role: "admin",
     description:
-      "List rejected proof-of-delivery documents and rejected daily work logs, with rejection reasons. Does not include rejected work diaries.",
+      "List rejected proof-of-delivery documents, with rejection reasons. Does not include rejected work diaries. Work logs have no rejection concept.",
   },
   {
     name: "getInvoiceReadyJobs",
     role: "admin",
-    description: "List completed jobs with approved documents, ready for invoicing.",
+    description: "List completed jobs with an approved POD, ready for invoicing.",
   },
   {
     name: "getDailyOperationsSummary",

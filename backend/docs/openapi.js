@@ -221,7 +221,7 @@ const openApiSpec = {
               "job_assigned", "job_updated", "job_started", "job_completed",
               "pod_submitted", "pod_approved", "pod_rejected",
               "diary_submitted", "diary_approved", "diary_rejected",
-              "worklog_submitted", "worklog_approved", "worklog_rejected",
+              "worklog_submitted",
             ],
             example: "job_assigned",
           },

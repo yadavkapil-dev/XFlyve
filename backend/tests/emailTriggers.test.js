@@ -247,26 +247,6 @@ describe("Email trigger: document rejected (POD / work diary / work log)", () =>
     return { controller: require("../controllers/workDiaryController"), WorkDiary, Driver, notificationService, emailService };
   };
 
-  const loadWorkLogController = () => {
-    jest.resetModules();
-
-    const DailyWorkLog = jest.fn().mockImplementation((data) => ({ ...data, _id: "log-1", save: jest.fn().mockResolvedValue(undefined) }));
-    DailyWorkLog.findById = jest.fn();
-    const Driver = { findById: jest.fn() };
-    const notificationService = notificationServiceMock();
-    const activityService = activityServiceMock();
-    const emailService = emailServiceMock();
-
-    jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
-    jest.doMock("../models/driver", () => Driver);
-    jest.doMock("../utils/logger", () => ({ error: jest.fn(), warn: jest.fn() }));
-    jest.doMock("../services/notificationService", () => notificationService);
-    jest.doMock("../services/activityService", () => activityService);
-    jest.doMock("../services/emailService", () => emailService);
-
-    return { controller: require("../controllers/workLogController"), DailyWorkLog, Driver, notificationService, emailService };
-  };
-
   afterEach(() => jest.restoreAllMocks());
 
   test("rejectPOD sends a document-rejected email (documentType 'pod') with the rejection reason, alongside notifyUser", async () => {
@@ -310,25 +290,6 @@ describe("Email trigger: document rejected (POD / work diary / work log)", () =>
     });
   });
 
-  test("rejectWorkLog sends a document-rejected email (documentType 'worklog') with the rejection reason", async () => {
-    const { controller, DailyWorkLog, Driver, emailService } = loadWorkLogController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const logId = new mongoose.Types.ObjectId().toString();
-    const log = { _id: logId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    DailyWorkLog.findById.mockResolvedValueOnce(log);
-    Driver.findById.mockReturnValueOnce(selectLeanResult({ email: "driver3@example.com" }));
-
-    const req = { params: { logId }, body: { rejectionReason: "missing hours" }, user: { id: "admin-1", role: "admin" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkLog(req, res);
-
-    expect(emailService.sendDocumentRejectedEmail).toHaveBeenCalledWith("driver3@example.com", {
-      documentType: "worklog",
-      reason: "missing hours",
-    });
-  });
-
   test("rejectPOD still responds 200 and the rejection still persists even if the driver-email lookup fails", async () => {
     const { controller, JobPod, Driver, emailService } = loadPodController();
     const driverId = new mongoose.Types.ObjectId().toString();
@@ -350,23 +311,4 @@ describe("Email trigger: document rejected (POD / work diary / work log)", () =>
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  test("rejectWorkLog still responds 200 even if sendDocumentRejectedEmail itself throws synchronously", async () => {
-    const { controller, DailyWorkLog, Driver, emailService } = loadWorkLogController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const logId = new mongoose.Types.ObjectId().toString();
-    const log = { _id: logId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    DailyWorkLog.findById.mockResolvedValueOnce(log);
-    Driver.findById.mockReturnValueOnce(selectLeanResult({ email: "driver4@example.com" }));
-    emailService.sendDocumentRejectedEmail.mockImplementationOnce(() => {
-      throw new Error("Resend is down");
-    });
-
-    const req = { params: { logId }, body: { rejectionReason: "missing hours" }, user: { id: "admin-1", role: "admin" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkLog(req, res);
-
-    expect(log.save).toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-  });
 });

@@ -61,33 +61,6 @@ const dailyWorkLogSchema = new mongoose.Schema(
         ref: "Job",
       },
     ],
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
-    approvedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Driver",
-      default: null,
-    },
-    approvedAt: {
-      type: Date,
-      default: null,
-    },
-    rejectedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Driver",
-      default: null,
-    },
-    rejectedAt: {
-      type: Date,
-      default: null,
-    },
-    rejectionReason: {
-      type: String,
-      trim: true,
-    },
     notes: {
       type: String,
       trim: true,
@@ -98,9 +71,6 @@ const dailyWorkLogSchema = new mongoose.Schema(
 
 // Driver's own work log history (getLogsByDriver/getMyLogs, admin per-driver filter): DailyWorkLog.find({ driverId })
 dailyWorkLogSchema.index({ driverId: 1 });
-
-// Phase 4: pending-approvals queue (getPendingLogsForAdmin) — DailyWorkLog.find({ status }).sort({ workDate })
-dailyWorkLogSchema.index({ status: 1, workDate: -1 });
 
 dailyWorkLogSchema.pre("validate", function (next) {
   if (!this.workDate && this.date) {

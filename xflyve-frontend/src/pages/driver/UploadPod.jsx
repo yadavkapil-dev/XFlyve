@@ -18,7 +18,13 @@ import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import { uploadPod, listPodsByDriver, deletePod, updatePodNotes } from "../../api";
+
+// Real-time event types that mean "this page's data is now stale" — an
+// admin approving/rejecting a POD while this page is open. pod_submitted
+// isn't included: that notifies admins, not the driver who uploaded it.
+const RELEVANT_POD_EVENTS = ["pod_approved", "pod_rejected"];
 
 const palette = {
   ink: "#0b1220",
@@ -99,6 +105,7 @@ const DriverPOD = () => {
   const navigate = useNavigate();
   const { id: routeJobId } = useParams();
   const driverId = user?._id || user?.id;
+  const { lastEvent } = useNotifications();
 
   const [pods, setPods] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +136,18 @@ const DriverPOD = () => {
   useEffect(() => {
     fetchPods();
   }, [fetchPods]);
+
+  // Admin approves/rejects a POD while this page happens to be open — the
+  // Socket.IO event already reached NotificationContext (see
+  // notification:new there); this just re-runs the exact same fetch this
+  // page already uses on mount, so the status/lock state here never needs
+  // a manual refresh to catch up.
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (RELEVANT_POD_EVENTS.includes(lastEvent.type)) {
+      fetchPods();
+    }
+  }, [lastEvent, fetchPods]);
 
   const handleUpload = async (e) => {
     e.preventDefault();

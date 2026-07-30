@@ -29,6 +29,12 @@ import {
   deleteWorkLog,
 } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
+
+// Real-time event types that mean "this page's log data is now stale" — an
+// admin approving/rejecting a log while this page is open. worklog_submitted
+// isn't included: that notifies admins, not the driver.
+const RELEVANT_WORKLOG_EVENTS = ["worklog_approved", "worklog_rejected"];
 
 const palette = {
   ink: "#0b1220",
@@ -129,6 +135,7 @@ const StatPill = ({ icon, label, value }) => (
 const DriverWorkLogs = () => {
   const { user } = useAuth();
   const driverId = user?._id || user?.id;
+  const { lastEvent } = useNotifications();
 
   const [logs, setLogs] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -169,6 +176,16 @@ const DriverWorkLogs = () => {
     fetchLogs();
     fetchJobs();
   }, [fetchLogs, fetchJobs]);
+
+  // Admin approves/rejects a work log while this page happens to be open —
+  // re-run the exact same fetch this page already uses on mount, so the
+  // status shown here never needs a manual refresh to catch up.
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (RELEVANT_WORKLOG_EVENTS.includes(lastEvent.type)) {
+      fetchLogs();
+    }
+  }, [lastEvent, fetchLogs]);
 
   const todaysLog = useMemo(() => {
     const todayKey = new Date().toLocaleDateString("en-CA");

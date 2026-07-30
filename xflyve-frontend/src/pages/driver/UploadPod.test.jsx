@@ -7,10 +7,15 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import DriverPOD from "./UploadPod";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import { uploadPod, listPodsByDriver, deletePod } from "../../api";
 
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock("../../contexts/NotificationContext", () => ({
+  useNotifications: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
@@ -20,19 +25,27 @@ vi.mock("../../api", () => ({
   updatePodNotes: vi.fn(),
 }));
 
+// A function, not a cached element — reusing the exact same JSX element
+// reference across a render() and a later rerender() lets React bail out
+// of re-rendering that subtree entirely (it's allowed to assume identical
+// output for a referentially-unchanged element), which would silently skip
+// re-invoking useNotifications() and make the socket-event tests below
+// pass for the wrong reason (or not at all). A fresh element each call
+// avoids that.
+const podRoutes = () => (
+  <Routes>
+    <Route path="/driver/pods/upload/:id" element={<DriverPOD />} />
+    <Route path="/driver/pods/upload" element={<DriverPOD />} />
+  </Routes>
+);
+
 const renderAt = (path) =>
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/driver/pods/upload/:id" element={<DriverPOD />} />
-        <Route path="/driver/pods/upload" element={<DriverPOD />} />
-      </Routes>
-    </MemoryRouter>
-  );
+  render(<MemoryRouter initialEntries={[path]}>{podRoutes()}</MemoryRouter>);
 
 describe("DriverPOD — POD upload interaction", () => {
   beforeEach(() => {
     useAuth.mockReturnValue({ user: { _id: "driver1" } });
+    useNotifications.mockReturnValue({ lastEvent: null });
   });
 
   test("PASS: submitting without selecting a file shows a validation error and never calls uploadPod", async () => {
@@ -155,5 +168,43 @@ describe("DriverPOD — POD upload interaction", () => {
     expect(julyFifteenIndex).toBeGreaterThanOrEqual(0);
     expect(julyFirstIndex).toBeGreaterThanOrEqual(0);
     expect(julyFifteenIndex).toBeLessThan(julyFirstIndex);
+  });
+
+  test("PASS: a pod_approved real-time event triggers a refetch while this page is open — no manual reload needed", async () => {
+    listPodsByDriver.mockResolvedValueOnce({
+      data: [{ _id: "pod1", jobId: "job1", status: "pending", notes: "" }],
+    });
+
+    const { rerender } = renderAt("/driver/pods/upload/job1");
+
+    expect(await screen.findByText("Pending approval")).toBeInTheDocument();
+    expect(listPodsByDriver).toHaveBeenCalledTimes(1);
+
+    // Admin approves the POD elsewhere — NotificationContext's socket
+    // listener receives the event and exposes it as lastEvent; this page
+    // reacts to that change, not to a page reload.
+    listPodsByDriver.mockResolvedValueOnce({
+      data: [{ _id: "pod1", jobId: "job1", status: "approved", notes: "" }],
+    });
+    useNotifications.mockReturnValue({ lastEvent: { type: "pod_approved", resourceType: "jobpod", resourceId: "pod1" } });
+    rerender(<MemoryRouter initialEntries={["/driver/pods/upload/job1"]}>{podRoutes()}</MemoryRouter>);
+
+    await waitFor(() => expect(listPodsByDriver).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Approved by admin — locked")).toBeInTheDocument();
+  });
+
+  test("PASS: an unrelated real-time event (e.g. a diary approval) does not trigger a POD refetch", async () => {
+    listPodsByDriver.mockResolvedValue({
+      data: [{ _id: "pod1", jobId: "job1", status: "pending", notes: "" }],
+    });
+
+    const { rerender } = renderAt("/driver/pods/upload/job1");
+    await screen.findByText("Pending approval");
+    expect(listPodsByDriver).toHaveBeenCalledTimes(1);
+
+    useNotifications.mockReturnValue({ lastEvent: { type: "diary_approved", resourceType: "workdiary", resourceId: "diary1" } });
+    rerender(<MemoryRouter initialEntries={["/driver/pods/upload/job1"]}>{podRoutes()}</MemoryRouter>);
+
+    await waitFor(() => expect(listPodsByDriver).toHaveBeenCalledTimes(1));
   });
 });

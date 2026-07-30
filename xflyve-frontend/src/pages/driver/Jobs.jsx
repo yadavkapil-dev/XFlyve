@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -14,6 +14,7 @@ import { alpha } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
 import { getJobsByDriver, listPodsByDriver, listWorkDiariesByDriver, updateJob } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
@@ -87,6 +88,11 @@ const getLatestForJob = (records, jobId) => {
     )[0] || null;
 };
 
+// Real-time event types that mean "this page's POD/diary state is now
+// stale" — an admin approving/rejecting either while this page is open.
+// *_submitted isn't included: those notify admins, not the driver.
+const RELEVANT_EVENTS = ["pod_approved", "pod_rejected", "diary_approved", "diary_rejected"];
+
 const DetailItem = ({ icon, label, value }) => (
   <Paper
     elevation={0}
@@ -130,6 +136,7 @@ const DriverJobs = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const driverId = user?._id || user?.id;
+  const { lastEvent } = useNotifications();
   const [jobs, setJobs] = useState([]);
   const [pods, setPods] = useState([]);
   const [diaries, setDiaries] = useState([]);
@@ -137,35 +144,46 @@ const DriverJobs = () => {
   const [processingId, setProcessingId] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const fetchJobs = useCallback(async () => {
     if (!driverId) return;
 
-    const fetchJobs = async () => {
-      setLoading(true);
-      setError("");
-      const [jobsResult, podsResult, diariesResult] = await Promise.allSettled([
-          getJobsByDriver(driverId),
-          listPodsByDriver(driverId, { limit: 100 }),
-          listWorkDiariesByDriver(driverId, { limit: 100 }),
-      ]);
+    setLoading(true);
+    setError("");
+    const [jobsResult, podsResult, diariesResult] = await Promise.allSettled([
+        getJobsByDriver(driverId),
+        listPodsByDriver(driverId, { limit: 100 }),
+        listWorkDiariesByDriver(driverId, { limit: 100 }),
+    ]);
 
-      setJobs(jobsResult.status === "fulfilled" ? jobsResult.value.data.data || [] : []);
-      setPods(podsResult.status === "fulfilled" ? podsResult.value?.data || [] : []);
-      setDiaries(diariesResult.status === "fulfilled" ? diariesResult.value?.data || [] : []);
+    setJobs(jobsResult.status === "fulfilled" ? jobsResult.value.data.data || [] : []);
+    setPods(podsResult.status === "fulfilled" ? podsResult.value?.data || [] : []);
+    setDiaries(diariesResult.status === "fulfilled" ? diariesResult.value?.data || [] : []);
 
-      if (jobsResult.status === "rejected") {
-        setError(jobsResult.reason?.response?.data?.message || "Failed to fetch jobs.");
-      } else if (podsResult.status === "rejected") {
-        setError("Jobs loaded, but POD status could not be checked.");
-      } else if (diariesResult.status === "rejected") {
-        setError("Jobs loaded, but work diary status could not be checked.");
-      }
+    if (jobsResult.status === "rejected") {
+      setError(jobsResult.reason?.response?.data?.message || "Failed to fetch jobs.");
+    } else if (podsResult.status === "rejected") {
+      setError("Jobs loaded, but POD status could not be checked.");
+    } else if (diariesResult.status === "rejected") {
+      setError("Jobs loaded, but work diary status could not be checked.");
+    }
 
-      setLoading(false);
-    };
-
-    fetchJobs();
+    setLoading(false);
   }, [driverId]);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  // Admin approves/rejects a POD or diary while this page happens to be
+  // open — re-run the exact same fetch this page already uses on mount, so
+  // the Upload POD / Work Diary Pages lock states never need a manual
+  // refresh to catch up.
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (RELEVANT_EVENTS.includes(lastEvent.type)) {
+      fetchJobs();
+    }
+  }, [lastEvent, fetchJobs]);
 
   const visibleJobs = useMemo(() => {
     const today = new Date();

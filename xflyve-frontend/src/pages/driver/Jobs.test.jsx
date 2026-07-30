@@ -7,10 +7,15 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import DriverJobs from "./Jobs";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import { getJobsByDriver, listPodsByDriver, listWorkDiariesByDriver, updateJob } from "../../api";
 
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock("../../contexts/NotificationContext", () => ({
+  useNotifications: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
@@ -39,18 +44,24 @@ const baseJob = (overrides = {}) => ({
   ...overrides,
 });
 
-const renderJobs = () =>
-  render(
-    <MemoryRouter>
-      <DriverJobs />
-    </MemoryRouter>
-  );
+// A function, not a cached element — see the identical comment in
+// UploadPod.test.jsx: reusing the same JSX element reference across a
+// render() and a later rerender() lets React bail out of re-rendering the
+// subtree, silently skipping the re-invocation of useNotifications().
+const jobsTree = () => (
+  <MemoryRouter>
+    <DriverJobs />
+  </MemoryRouter>
+);
+
+const renderJobs = () => render(jobsTree());
 
 describe("DriverJobs — job status actions", () => {
   beforeEach(() => {
     useAuth.mockReturnValue({ user: { _id: "driver1" } });
     listPodsByDriver.mockResolvedValue({ data: [] });
     listWorkDiariesByDriver.mockResolvedValue({ data: [] });
+    useNotifications.mockReturnValue({ lastEvent: null });
   });
 
   test("PASS: a pending job shows 'Start Job'; clicking it calls updateJob with status 'in-progress' and reflects the new status", async () => {
@@ -166,6 +177,47 @@ describe("DriverJobs — job status actions", () => {
     listWorkDiariesByDriver.mockResolvedValue({ data: [{ _id: "diary1", jobId: "job1", status: "pending" }] });
 
     renderJobs();
+
+    expect(await screen.findByText("Work Diary Submitted ✅")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Work Diary Pages" })).not.toBeInTheDocument();
+  });
+
+  test("PASS: a pod_approved real-time event flips the Upload POD button to locked while the page is open — no reload needed", async () => {
+    const job = baseJob({ jobType: "local", status: "completed" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+    listPodsByDriver.mockResolvedValueOnce({ data: [] });
+
+    const { rerender } = renderJobs();
+
+    expect(await screen.findByRole("button", { name: "Upload POD" })).toBeInTheDocument();
+
+    // Driver's POD, uploaded from another tab/device, just got approved —
+    // this page never called uploadPod itself, so the only way it learns
+    // about the new POD is via the real-time event triggering a refetch.
+    listPodsByDriver.mockResolvedValueOnce({
+      data: [{ _id: "pod1", jobId: "job1", status: "approved" }],
+    });
+    useNotifications.mockReturnValue({ lastEvent: { type: "pod_approved", resourceType: "jobpod", resourceId: "pod1" } });
+    rerender(jobsTree());
+
+    expect(await screen.findByText("POD Uploaded ✅")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Upload POD" })).not.toBeInTheDocument();
+  });
+
+  test("PASS: a diary_approved real-time event flips the Work Diary Pages button to locked while the page is open", async () => {
+    const job = baseJob({ jobType: "interstate", status: "completed" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+    listWorkDiariesByDriver.mockResolvedValueOnce({ data: [] });
+
+    const { rerender } = renderJobs();
+
+    expect(await screen.findByRole("button", { name: "Work Diary Pages" })).toBeInTheDocument();
+
+    listWorkDiariesByDriver.mockResolvedValueOnce({
+      data: [{ _id: "diary1", jobId: "job1", status: "approved" }],
+    });
+    useNotifications.mockReturnValue({ lastEvent: { type: "diary_approved", resourceType: "workdiary", resourceId: "diary1" } });
+    rerender(jobsTree());
 
     expect(await screen.findByText("Work Diary Submitted ✅")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Work Diary Pages" })).not.toBeInTheDocument();

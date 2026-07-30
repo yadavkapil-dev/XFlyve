@@ -10,10 +10,15 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import WorkDiary from "./WorkDiary";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import { uploadWorkDiary, listWorkDiariesByDriver, deleteWorkDiary } from "../../api";
 
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock("../../contexts/NotificationContext", () => ({
+  useNotifications: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
@@ -23,19 +28,24 @@ vi.mock("../../api", () => ({
   updateWorkDiaryNotes: vi.fn(),
 }));
 
+// A function, not a cached element — see the identical comment in
+// UploadPod.test.jsx: reusing the same JSX element reference across a
+// render() and a later rerender() lets React bail out of re-rendering the
+// subtree, silently skipping the re-invocation of useNotifications().
+const diaryRoutes = () => (
+  <Routes>
+    <Route path="/driver/work-diary/:id" element={<WorkDiary />} />
+    <Route path="/driver/work-diary" element={<WorkDiary />} />
+  </Routes>
+);
+
 const renderAt = (path) =>
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/driver/work-diary/:id" element={<WorkDiary />} />
-        <Route path="/driver/work-diary" element={<WorkDiary />} />
-      </Routes>
-    </MemoryRouter>
-  );
+  render(<MemoryRouter initialEntries={[path]}>{diaryRoutes()}</MemoryRouter>);
 
 describe("WorkDiary — work diary upload interaction", () => {
   beforeEach(() => {
     useAuth.mockReturnValue({ user: { _id: "driver1" } });
+    useNotifications.mockReturnValue({ lastEvent: null });
   });
 
   test("PASS: submitting without selecting a file shows a validation error and never calls uploadWorkDiary", async () => {
@@ -158,5 +168,43 @@ describe("WorkDiary — work diary upload interaction", () => {
     expect(julyFifteenIndex).toBeGreaterThanOrEqual(0);
     expect(julyFirstIndex).toBeGreaterThanOrEqual(0);
     expect(julyFifteenIndex).toBeLessThan(julyFirstIndex);
+  });
+
+  test("PASS: a diary_approved real-time event triggers a refetch while this page is open — no manual reload needed", async () => {
+    listWorkDiariesByDriver.mockResolvedValueOnce({
+      data: [{ _id: "diary1", jobId: "job1", status: "pending", notes: "" }],
+    });
+
+    const { rerender } = renderAt("/driver/work-diary/job1");
+
+    expect(await screen.findByText("Pending approval")).toBeInTheDocument();
+    expect(listWorkDiariesByDriver).toHaveBeenCalledTimes(1);
+
+    // Admin approves the diary elsewhere — NotificationContext's socket
+    // listener receives the event and exposes it as lastEvent; this page
+    // reacts to that change, not to a page reload.
+    listWorkDiariesByDriver.mockResolvedValueOnce({
+      data: [{ _id: "diary1", jobId: "job1", status: "approved", notes: "" }],
+    });
+    useNotifications.mockReturnValue({ lastEvent: { type: "diary_approved", resourceType: "workdiary", resourceId: "diary1" } });
+    rerender(<MemoryRouter initialEntries={["/driver/work-diary/job1"]}>{diaryRoutes()}</MemoryRouter>);
+
+    await waitFor(() => expect(listWorkDiariesByDriver).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Approved by admin — locked")).toBeInTheDocument();
+  });
+
+  test("PASS: an unrelated real-time event (e.g. a POD approval) does not trigger a diary refetch", async () => {
+    listWorkDiariesByDriver.mockResolvedValue({
+      data: [{ _id: "diary1", jobId: "job1", status: "pending", notes: "" }],
+    });
+
+    const { rerender } = renderAt("/driver/work-diary/job1");
+    await screen.findByText("Pending approval");
+    expect(listWorkDiariesByDriver).toHaveBeenCalledTimes(1);
+
+    useNotifications.mockReturnValue({ lastEvent: { type: "pod_approved", resourceType: "jobpod", resourceId: "pod1" } });
+    rerender(<MemoryRouter initialEntries={["/driver/work-diary/job1"]}>{diaryRoutes()}</MemoryRouter>);
+
+    await waitFor(() => expect(listWorkDiariesByDriver).toHaveBeenCalledTimes(1));
   });
 });

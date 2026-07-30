@@ -18,6 +18,15 @@ export const NotificationProvider = ({ children }) => {
   const { user, token } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  // The most recently received real-time event, exposed separately from
+  // `notifications` (which also gets populated by the REST fetch on mount)
+  // so a page can useEffect on "a live event just arrived" without also
+  // firing on that unrelated initial REST load. Pages that need to react
+  // to a specific event type (e.g. "pod_approved") watch this value via
+  // useNotifications() and re-run their own existing fetch function —
+  // see driver/UploadPod.jsx, driver/WorkDiary.jsx, driver/WorkLogs.jsx,
+  // driver/Jobs.jsx.
+  const [lastEvent, setLastEvent] = useState(null);
   const socketRef = useRef(null);
 
   const fetchNotifications = useCallback(async (params) => {
@@ -48,6 +57,7 @@ export const NotificationProvider = ({ children }) => {
     if (!user || !token) {
       setNotifications([]);
       setUnreadCount(0);
+      setLastEvent(null);
       return undefined;
     }
 
@@ -63,6 +73,7 @@ export const NotificationProvider = ({ children }) => {
     socket.on(NOTIFICATION_EVENT, (notification) => {
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
+      setLastEvent(notification);
     });
 
     // Reconnects reuse this same socket/listener — re-sync state once the
@@ -110,6 +121,7 @@ export const NotificationProvider = ({ children }) => {
         fetchNotifications,
         markOneRead,
         markAllRead,
+        lastEvent,
       }}
     >
       {children}

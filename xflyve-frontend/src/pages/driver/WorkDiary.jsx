@@ -21,12 +21,18 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import {
   uploadWorkDiary,
   listWorkDiariesByDriver,
   deleteWorkDiary,
   updateWorkDiaryNotes,
 } from "../../api";
+
+// Real-time event types that mean "this page's data is now stale" — an
+// admin approving/rejecting a diary while this page is open.
+// diary_submitted isn't included: that notifies admins, not the driver.
+const RELEVANT_DIARY_EVENTS = ["diary_approved", "diary_rejected"];
 
 const palette = {
   ink: "#0b1220",
@@ -107,6 +113,7 @@ const WorkDiary = () => {
   const navigate = useNavigate();
   const { id: routeJobId } = useParams();
   const driverId = user?._id || user?.id;
+  const { lastEvent } = useNotifications();
 
   const [workDiaries, setWorkDiaries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +144,16 @@ const WorkDiary = () => {
   useEffect(() => {
     fetchWorkDiaries();
   }, [fetchWorkDiaries]);
+
+  // Admin approves/rejects a diary while this page happens to be open —
+  // re-run the exact same fetch this page already uses on mount, so the
+  // status/lock state here never needs a manual refresh to catch up.
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (RELEVANT_DIARY_EVENTS.includes(lastEvent.type)) {
+      fetchWorkDiaries();
+    }
+  }, [lastEvent, fetchWorkDiaries]);
 
   const handleUpload = async (e) => {
     e.preventDefault();

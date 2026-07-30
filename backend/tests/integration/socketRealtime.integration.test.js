@@ -182,6 +182,7 @@ describe("Item: Notification event delivery", () => {
         assignedTo: driver._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: tomorrow(),
+        startTime: "08:00",
         jobType: "local",
       });
     expect(createRes.status).toBe(201);
@@ -210,6 +211,7 @@ describe("Item: REST fallback (offline delivery)", () => {
         assignedTo: driver._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: tomorrow(),
+        startTime: "08:00",
         jobType: "local",
       });
     expect(createRes.status).toBe(201);

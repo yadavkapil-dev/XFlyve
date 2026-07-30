@@ -63,8 +63,8 @@ export const getSystemStats = () => api.get("/admin/stats");
 // defaults to the server's UTC date if omitted.
 export const getDashboardStats = (date) => api.get("/admin/dashboard-stats", { params: { date } });
 
-export const downloadAllPods = () =>
-  api.get("/admin/download-all-pods", { responseType: "blob" });
+export const downloadAllPods = (date) =>
+  api.get("/admin/download-all-pods", { params: { date }, responseType: "blob" });
 
 // Trucks
 // params: { page, limit, sort, search, status, recordStatus }

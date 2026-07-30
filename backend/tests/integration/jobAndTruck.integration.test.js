@@ -46,6 +46,7 @@ describe("Flow: Job lifecycle", () => {
         assignedTo: driver._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: tomorrow(),
+        startTime: "08:00",
         jobType: "local",
       });
 
@@ -72,6 +73,85 @@ describe("Flow: Job lifecycle", () => {
     expect(persisted.status).toBe("completed");
     expect(persisted.startedAt).toBeInstanceOf(Date);
     expect(persisted.completedAt).toBeInstanceOf(Date);
+  });
+
+  test("PASS: startTime persists from creation, and customerName has no effect even if sent — the field no longer exists", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck();
+
+    const createRes = await request(app)
+      .post("/api/jobs/create")
+      .set("Authorization", authHeader(admin))
+      .send({
+        title: "Customer field regression check",
+        description: "Deliver freight",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        customerName: "Acme Logistics",
+        assignedTo: driver._id.toString(),
+        assignedTruck: truck._id.toString(),
+        jobDate: tomorrow(),
+        startTime: "09:30",
+        jobType: "local",
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.data.startTime).toBe("09:30");
+    expect(createRes.body.data.customerName).toBeUndefined();
+
+    const persisted = await Job.findById(createRes.body.data._id).lean();
+    expect(persisted.startTime).toBe("09:30");
+    expect(persisted.customerName).toBeUndefined();
+  });
+
+  test("PASS: creating a job without a startTime is rejected (422) — required going forward", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck();
+
+    const res = await request(app)
+      .post("/api/jobs/create")
+      .set("Authorization", authHeader(admin))
+      .send({
+        title: "Missing start time",
+        pickupLocation: "Depot",
+        deliveryLocation: "Customer",
+        assignedTo: driver._id.toString(),
+        assignedTruck: truck._id.toString(),
+        jobDate: tomorrow(),
+        jobType: "local",
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.message).toMatch(/Start time is required/);
+  });
+
+  test("PASS: an admin can start-time-edit a legacy job created before the field existed, without it ever crashing the update", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    // createJob() factory writes directly via Job.create(), bypassing the
+    // validator — the same shape a pre-existing production job would have:
+    // no startTime at all.
+    const legacyJob = await createJob({ assignedTo: driver, status: "pending" });
+    expect(legacyJob.startTime).toBeUndefined();
+
+    // The driver's own status-only transition must still work on a job
+    // with no startTime — this is exactly why the model field isn't
+    // schema-required.
+    const startRes = await request(app)
+      .put(`/api/jobs/${legacyJob._id}`)
+      .set("Authorization", authHeader(driver))
+      .send({ status: "in-progress" });
+    expect(startRes.status).toBe(200);
+
+    const editRes = await request(app)
+      .put(`/api/jobs/${legacyJob._id}`)
+      .set("Authorization", authHeader(admin))
+      .send({ startTime: "07:15" });
+
+    expect(editRes.status).toBe(200);
+    expect(editRes.body.data.startTime).toBe("07:15");
   });
 
   test("PASS: a job cannot be completed directly from 'pending' (must go through 'in-progress' first)", async () => {
@@ -140,6 +220,7 @@ describe("Flow: Truck consistency", () => {
         assignedTo: driverB._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: sharedDate,
+        startTime: "08:00",
         jobType: "local",
       });
 

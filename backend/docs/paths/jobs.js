@@ -9,7 +9,6 @@ const jobRequestBody = (required) => ({
     description: { type: "string", example: "Pallet freight, 12 tonnes" },
     pickupLocation: { type: "string", example: "Sydney Depot" },
     deliveryLocation: { type: "string", example: "Melbourne Warehouse" },
-    customerName: { type: "string", example: "Acme Logistics" },
     customerReference: { type: "string", example: "PO-10293" },
     jobRate: { type: "number", example: 850 },
     invoiceStatus: { type: "string", enum: ["pending", "ready", "invoiced", "paid"] },
@@ -17,6 +16,7 @@ const jobRequestBody = (required) => ({
     assignedTo: { type: "string", example: FAKE_DRIVER_ID },
     assignedTruck: { type: "string", example: FAKE_TRUCK_ID },
     jobDate: { type: "string", format: "date", example: "2026-08-01" },
+    startTime: { type: "string", example: "08:00", description: "HH:mm. Required on create; not enforced by the schema itself (so pre-existing jobs created before this field existed remain saveable)." },
     jobType: { type: "string", enum: ["interstate", "local"] },
     status: { type: "string", enum: ["pending", "in-progress", "completed"], description: "Only meaningful on update; driver updates are restricted to the legal next status (pending->in-progress->completed)." },
   },
@@ -26,11 +26,10 @@ module.exports = {
   "/api/jobs": {
     get: {
       tags: ["Jobs"],
-      summary: "List jobs — paginated, searchable, filterable (admin only)",
+      summary: "List jobs — paginated, filterable (admin only)",
       security: h.bearer,
       parameters: [
         h.pageParam, h.limitParam, h.sortParam(["jobDate", "createdAt", "status", "title"], "jobDate"),
-        { name: "search", in: "query", schema: { type: "string" }, description: "Matches customerName, pickupLocation, or deliveryLocation." },
         { name: "status", in: "query", schema: { type: "string", enum: ["pending", "in-progress", "completed"] } },
         { name: "jobType", in: "query", schema: { type: "string", enum: ["interstate", "local"] } },
         { name: "assignedTo", in: "query", schema: { type: "string" } },
@@ -65,7 +64,7 @@ module.exports = {
       summary: "Create a job (admin only)",
       description: "Fails with 409/400 if the assigned truck already has a non-archived job on the same date, or the truck is unavailable (out-of-service/archived), or the job date is in the past.",
       security: h.bearer,
-      requestBody: { required: true, content: { "application/json": { schema: jobRequestBody(["title", "description", "pickupLocation", "deliveryLocation", "assignedTo", "assignedTruck", "jobDate", "jobType"]) } } },
+      requestBody: { required: true, content: { "application/json": { schema: jobRequestBody(["title", "pickupLocation", "deliveryLocation", "assignedTo", "assignedTruck", "jobDate", "startTime", "jobType"]) } } },
       responses: {
         201: { description: "Created.", content: { "application/json": { example: { status: "success", data: { _id: FAKE_JOB_ID, status: "pending" } } } } },
         400: { description: "Missing/invalid field, past job date, or truck already booked that date.", content: { "application/json": { example: { status: "fail", message: "This truck is already assigned to another job on the selected date" } } } },

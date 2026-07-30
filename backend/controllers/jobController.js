@@ -11,7 +11,6 @@ const {
   reassignJob,
 } = require("../services/jobTransitionService");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
-const { buildSearchOr } = require("../utils/search");
 const { buildDateRangeFilter } = require("../utils/dateRange");
 const { notifyUser } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
@@ -19,7 +18,6 @@ const { sendJobAssignedEmail } = require("../services/emailService");
 
 const JOB_SORT_FIELDS = ["jobDate", "createdAt", "status", "title"];
 const JOB_DEFAULT_SORT = { jobDate: 1 };
-const JOB_SEARCH_FIELDS = ["customerName", "pickupLocation", "deliveryLocation"];
 
 const DRIVER_STATUS_TRANSITIONS = {
   pending: "in-progress",
@@ -90,7 +88,6 @@ exports.createJob = async (req, res) => {
       description,
       pickupLocation,
       deliveryLocation,
-      customerName,
       customerReference,
       jobRate,
       invoiceStatus,
@@ -98,6 +95,7 @@ exports.createJob = async (req, res) => {
       assignedTo,
       assignedTruck,
       jobDate,
+      startTime,
       jobType,
     } = req.body;
 
@@ -147,7 +145,6 @@ exports.createJob = async (req, res) => {
       description: description?.trim(),
       pickupLocation: pickupLocation.trim(),
       deliveryLocation: deliveryLocation.trim(),
-      customerName: customerName?.trim(),
       customerReference: customerReference?.trim(),
       jobRate,
       invoiceStatus,
@@ -155,6 +152,7 @@ exports.createJob = async (req, res) => {
       assignedTo,
       assignedTruck,
       jobDate: normalizedJobDate,
+      startTime: startTime?.trim(),
       jobType,
       status: "pending",
     });
@@ -215,21 +213,18 @@ exports.createJob = async (req, res) => {
 };
 
 
-// @desc    Get all jobs (admin only) — paginated, searchable, filterable
+// @desc    Get all jobs (admin only) — paginated, filterable
 // @route   GET /api/jobs
 // @access  Admin
 // Query params: page, limit, sort (jobDate|createdAt|status|title, prefix
-// "-" for descending), search (matches customer/pickup/delivery location),
-// status, jobType, assignedTo, assignedTruck, dateFrom, dateTo (jobDate range).
+// "-" for descending), status, jobType, assignedTo, assignedTruck, dateFrom,
+// dateTo (jobDate range).
 exports.getAllJobs = async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort, JOB_SORT_FIELDS, JOB_DEFAULT_SORT);
 
     const query = { recordStatus: { $ne: "archived" } };
-
-    const searchOr = buildSearchOr(req.query.search, JOB_SEARCH_FIELDS);
-    if (searchOr) Object.assign(query, searchOr);
 
     if (req.query.status) query.status = req.query.status;
     if (req.query.jobType) query.jobType = req.query.jobType;
@@ -385,7 +380,6 @@ exports.updateJob = async (req, res) => {
       description,
       pickupLocation,
       deliveryLocation,
-      customerName,
       customerReference,
       jobRate,
       invoiceStatus,
@@ -393,6 +387,7 @@ exports.updateJob = async (req, res) => {
       assignedTo,
       assignedTruck,
       jobDate,
+      startTime,
       jobType,
       status,
     } = req.body;
@@ -415,6 +410,7 @@ exports.updateJob = async (req, res) => {
       assignedTo: job.assignedTo,
       assignedTruck: job.assignedTruck,
       jobDate: job.jobDate,
+      startTime: job.startTime,
       jobType: job.jobType,
       status: job.status,
     };
@@ -533,7 +529,6 @@ exports.updateJob = async (req, res) => {
     job.description = description !== undefined ? description : job.description;
     job.pickupLocation = pickupLocation !== undefined ? pickupLocation : job.pickupLocation;
     job.deliveryLocation = deliveryLocation !== undefined ? deliveryLocation : job.deliveryLocation;
-    job.customerName = customerName !== undefined ? customerName : job.customerName;
     job.customerReference = customerReference !== undefined ? customerReference : job.customerReference;
     job.jobRate = jobRate !== undefined ? jobRate : job.jobRate;
     job.invoiceStatus = invoiceStatus !== undefined ? invoiceStatus : job.invoiceStatus;
@@ -543,6 +538,7 @@ exports.updateJob = async (req, res) => {
     // it again here with a stale in-memory value.
     job.assignedTruck = isReassigningActiveTruck ? job.assignedTruck : nextAssignedTruck;
     job.jobDate = nextJobDate;
+    job.startTime = startTime !== undefined ? startTime : job.startTime;
     job.jobType = jobType !== undefined ? jobType : job.jobType;
     job.status = status !== undefined ? status : job.status;
 
@@ -611,6 +607,7 @@ exports.updateJob = async (req, res) => {
           assignedTo: job.assignedTo,
           assignedTruck: job.assignedTruck,
           jobDate: job.jobDate,
+          startTime: job.startTime,
           jobType: job.jobType,
           status: job.status,
         },

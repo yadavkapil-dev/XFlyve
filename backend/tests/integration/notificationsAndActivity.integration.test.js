@@ -42,6 +42,7 @@ describe("Flow: Notification creation (via the real read API)", () => {
         assignedTo: driver._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: tomorrow(),
+        startTime: "08:00",
         jobType: "local",
       });
     expect(createRes.status).toBe(201);
@@ -84,6 +85,7 @@ describe("Flow: Notification creation (via the real read API)", () => {
         assignedTo: driverA._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: tomorrow(),
+        startTime: "08:00",
         jobType: "local",
       });
 
@@ -118,6 +120,7 @@ describe("Flow: Notification creation (via the real read API)", () => {
           assignedTo: driver._id.toString(),
           assignedTruck: (await createTruck())._id.toString(),
           jobDate: tomorrow(),
+          startTime: "08:00",
           jobType: "local",
         });
     }
@@ -150,6 +153,7 @@ describe("Flow: Activity creation (via the real read API)", () => {
         assignedTo: driver._id.toString(),
         assignedTruck: truck._id.toString(),
         jobDate: tomorrow(),
+        startTime: "08:00",
         jobType: "local",
       });
     const jobId = createRes.body.data._id;

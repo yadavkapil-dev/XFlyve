@@ -105,6 +105,7 @@ const seedJobWithPendingPod = async () => {
       assignedTo: driver._id,
       assignedTruck: truck._id,
       jobDate: today,
+      startTime: "08:00",
       jobType: "local",
     },
   });
@@ -140,6 +141,7 @@ const seedJobWithPendingPod = async () => {
       assignedTo: driver._id,
       assignedTruck: truck._id,
       jobDate: tomorrowDate,
+      startTime: "08:00",
       jobType: "local",
     },
   });

@@ -193,10 +193,12 @@ module.exports = {
   "/api/admin/download-all-pods": {
     get: {
       tags: ["Drivers"],
-      summary: "Download every uploaded POD file as a ZIP",
+      summary: "Download one day's approved POD files as a ZIP (admin only)",
+      description: "Scoped to status=approved and a single calendar day on uploadDate. `date` defaults to the server's current UTC date when omitted.",
       security: h.bearer,
+      parameters: [{ name: "date", in: "query", schema: { type: "string", format: "date" }, example: "2026-08-01" }],
       responses: {
-        200: { description: "A .zip archive of every POD file (deduplicated filenames per driver/date).", content: { "application/zip": { schema: { type: "string", format: "binary" } } } },
+        200: { description: "A .zip archive of that day's approved POD files (deduplicated filenames per driver/date).", content: { "application/zip": { schema: { type: "string", format: "binary" } } } },
         401: h.unauthorized,
         403: h.forbiddenStatusEnvelope("Access denied: Admins only"),
         404: h.notFoundStatus("No POD files"),

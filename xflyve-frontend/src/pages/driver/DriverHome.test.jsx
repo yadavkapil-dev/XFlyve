@@ -93,6 +93,25 @@ describe("DriverHome — Today's Jobs summary", () => {
     expect(screen.queryByText(/TRK-/)).not.toBeInTheDocument();
   });
 
+  test("PASS: the summary card shows the job's start time when set", async () => {
+    const job = baseJob({ title: "Timed run", startTime: "08:30" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderDriverHome();
+
+    expect(await screen.findByText("Timed run")).toBeInTheDocument();
+    expect(screen.getByText("08:30")).toBeInTheDocument();
+  });
+
+  test("PASS: no start time row renders for a legacy job created before the field existed — doesn't crash", async () => {
+    const job = baseJob({ title: "Legacy run without a start time" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderDriverHome();
+
+    expect(await screen.findByText("Legacy run without a start time")).toBeInTheDocument();
+  });
+
   test("PASS: no action buttons render on the dashboard — Start/Complete/Upload POD live only on the Jobs page", async () => {
     const job = baseJob({ status: "pending" });
     getJobsByDriver.mockResolvedValue({ data: { data: [job] } });

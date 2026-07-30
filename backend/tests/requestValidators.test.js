@@ -30,6 +30,7 @@ describe("createJobValidator (real request behavior)", () => {
     assignedTo: "507f1f77bcf86cd799439011",
     assignedTruck: "507f1f77bcf86cd799439012",
     jobDate: "2026-08-01",
+    startTime: "08:00",
     jobType: "local",
   };
 
@@ -46,6 +47,31 @@ describe("createJobValidator (real request behavior)", () => {
 
     expect(res.status).toBe(422);
     expect(res.body.message).toMatch(/Title is required/);
+  });
+
+  test("rejects a missing startTime", async () => {
+    const app = buildApp("post", "/test", createJobValidator);
+    const { startTime, ...rest } = validPayload;
+    const res = await request(app).post("/test").send(rest);
+
+    expect(res.status).toBe(422);
+    expect(res.body.message).toMatch(/Start time is required/);
+  });
+
+  test("rejects a startTime that's only whitespace", async () => {
+    const app = buildApp("post", "/test", createJobValidator);
+    const res = await request(app).post("/test").send({ ...validPayload, startTime: "   " });
+
+    expect(res.status).toBe(422);
+    expect(res.body.message).toMatch(/Start time is required/);
+  });
+
+  test("accepts a payload with no description — it's optional on create", async () => {
+    const app = buildApp("post", "/test", createJobValidator);
+    const { description, ...rest } = validPayload;
+    const res = await request(app).post("/test").send(rest);
+
+    expect(res.status).toBe(200);
   });
 
   test("rejects a title that's only whitespace (trim + notEmpty)", async () => {
@@ -102,6 +128,20 @@ describe("updateJobValidator (real request behavior) — everything optional, bu
 
     expect(res.status).toBe(422);
     expect(res.body.message).toMatch(/Title cannot be empty/);
+  });
+
+  test("startTime may be omitted on update (a driver's status-only PUT never sends it)", async () => {
+    const app = buildApp("put", "/test", updateJobValidator);
+    const res = await request(app).put("/test").send({ status: "in-progress" });
+    expect(res.status).toBe(200);
+  });
+
+  test("an explicitly empty startTime is rejected on update, same as title", async () => {
+    const app = buildApp("put", "/test", updateJobValidator);
+    const res = await request(app).put("/test").send({ startTime: "" });
+
+    expect(res.status).toBe(422);
+    expect(res.body.message).toMatch(/Start time cannot be empty/);
   });
 });
 

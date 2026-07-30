@@ -44,9 +44,9 @@ const emptyForm = {
   truckId: "",
   assignedTo: "",
   jobDate: "",
+  startTime: "",
   pickupLocation: "",
   deliveryLocation: "",
-  customerName: "",
   jobType: "",
 };
 
@@ -189,10 +189,10 @@ const CreateJob = () => {
 
     const requiredFields = [
       "title",
-      "description",
       "truckId",
       "assignedTo",
       "jobDate",
+      "startTime",
       "pickupLocation",
       "deliveryLocation",
       "jobType",
@@ -265,12 +265,11 @@ const CreateJob = () => {
               <SectionCard icon={<AltRouteIcon />} title="Route Information" subtitle="What is moving, where it starts, and where it needs to arrive.">
                 <Stack spacing={1.5}>
                   <TextField fullWidth label="Run Title" name="title" value={formData.title} onChange={handleChange} required />
-                  <TextField fullWidth label="Run Description" name="description" multiline rows={3} value={formData.description} onChange={handleChange} required />
+                  <TextField fullWidth label="Run Description" name="description" multiline rows={3} value={formData.description} onChange={handleChange} />
                   <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
                     <TextField fullWidth label="Pickup Location" name="pickupLocation" value={formData.pickupLocation} onChange={handleChange} required />
                     <TextField fullWidth label="Delivery Location" name="deliveryLocation" value={formData.deliveryLocation} onChange={handleChange} required />
                   </Box>
-                  <TextField fullWidth label="Customer Name" name="customerName" value={formData.customerName} onChange={handleChange} />
                 </Stack>
               </SectionCard>
 
@@ -299,9 +298,10 @@ const CreateJob = () => {
                 </SectionCard>
               </Box>
 
-              <SectionCard icon={<CalendarMonthIcon />} title="Schedule" subtitle="Set the run date and type.">
+              <SectionCard icon={<CalendarMonthIcon />} title="Schedule" subtitle="Set the run date, start time and type.">
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
                   <TextField fullWidth type="date" label="Run Date" name="jobDate" InputLabelProps={{ shrink: true }} inputProps={{ min: todayDate }} value={formData.jobDate} onChange={handleChange} required />
+                  <TextField fullWidth type="time" label="Start Time" name="startTime" InputLabelProps={{ shrink: true }} value={formData.startTime} onChange={handleChange} required />
                   <TextField select fullWidth label="Run Type" name="jobType" value={formData.jobType} onChange={handleChange} required>
                     <MenuItem value="local">Local</MenuItem>
                     <MenuItem value="interstate">Interstate</MenuItem>
@@ -323,10 +323,10 @@ const CreateJob = () => {
               <Stack spacing={1.25}>
                 {[
                   ["Route", formData.pickupLocation && formData.deliveryLocation ? `${formData.pickupLocation} → ${formData.deliveryLocation}` : "Not set"],
-                  ["Customer", formData.customerName || "Not set"],
                   ["Driver", selectedDriver?.name || "Not assigned"],
                   ["Truck", selectedTruck?.truckNumber || "Not assigned"],
                   ["Date", formData.jobDate || "Not scheduled"],
+                  ["Start Time", formData.startTime || "Not set"],
                   ["Type", formData.jobType || "Not selected"],
                 ].map(([label, value]) => (
                   <Box key={label}>

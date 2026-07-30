@@ -66,6 +66,7 @@ test("admin creates a job through to invoicing readiness, with the driver comple
     const pad = (n) => String(n).padStart(2, "0");
     const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     await adminPage.getByLabel("Run Date").fill(today);
+    await adminPage.getByLabel("Start Time").fill("08:00");
 
     await adminPage.getByLabel("Run Type").click();
     await adminPage.getByRole("option", { name: "Local" }).click();

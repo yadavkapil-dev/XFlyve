@@ -16,6 +16,7 @@ import { alpha } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { getJobsByDriver } from "../../api";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
@@ -214,6 +215,11 @@ const JobSummaryCard = ({ job, onOpen }) => {
             {truckNumber && (
               <Box sx={{ pt: 1.25 }}>
                 <MiniDetailRow icon={<LocalShippingIcon />} text={truckNumber} />
+              </Box>
+            )}
+            {job.startTime && (
+              <Box sx={{ pt: 1.25 }}>
+                <MiniDetailRow icon={<AccessTimeIcon />} text={job.startTime} />
               </Box>
             )}
           </Stack>

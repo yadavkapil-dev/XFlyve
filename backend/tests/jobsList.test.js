@@ -32,7 +32,7 @@ const loadController = () => {
   return { controller: require("../controllers/jobController"), Job };
 };
 
-describe("GET /api/jobs (getAllJobs) — pagination/search/filter/sort", () => {
+describe("GET /api/jobs (getAllJobs) — pagination/filter/sort", () => {
   afterEach(() => jest.restoreAllMocks());
 
   test("page 1 uses the default page/limit and skip 0", async () => {
@@ -185,23 +185,22 @@ describe("GET /api/jobs (getAllJobs) — pagination/search/filter/sort", () => {
     expect(calledQuery.jobDate.$lt.toISOString()).toBe("2026-07-11T00:00:00.000Z");
   });
 
-  test("search: matches against customer/pickup/delivery via $or", async () => {
+  test("getAllJobs never builds a $or clause — job search was removed entirely, not just from the UI", async () => {
     const { controller, Job } = loadController();
     const chain = findChain([]);
     Job.find.mockReturnValueOnce(chain);
     Job.countDocuments.mockResolvedValueOnce(0);
 
     const res = makeResponse();
+    // Even if a caller still sends ?search=, getAllJobs has no code path
+    // left that reads it.
     await controller.getAllJobs({ query: { search: "Woolworths" } }, res);
 
     const calledQuery = Job.find.mock.calls[0][0];
-    expect(calledQuery.$or).toHaveLength(3);
-    expect(calledQuery.$or.some((clause) => clause.customerName)).toBe(true);
-    expect(calledQuery.$or.some((clause) => clause.pickupLocation)).toBe(true);
-    expect(calledQuery.$or.some((clause) => clause.deliveryLocation)).toBe(true);
+    expect(calledQuery.$or).toBeUndefined();
   });
 
-  test("combined search + filter + pagination all apply together", async () => {
+  test("combined filter + pagination all apply together", async () => {
     const { controller, Job } = loadController();
     const chain = findChain([{ _id: "job1" }]);
     Job.find.mockReturnValueOnce(chain);
@@ -211,7 +210,6 @@ describe("GET /api/jobs (getAllJobs) — pagination/search/filter/sort", () => {
     await controller.getAllJobs(
       {
         query: {
-          search: "Woolworths",
           status: "pending",
           jobType: "local",
           page: "2",
@@ -225,7 +223,6 @@ describe("GET /api/jobs (getAllJobs) — pagination/search/filter/sort", () => {
     const calledQuery = Job.find.mock.calls[0][0];
     expect(calledQuery.status).toBe("pending");
     expect(calledQuery.jobType).toBe("local");
-    expect(calledQuery.$or).toBeDefined();
     expect(chain.skip).toHaveBeenCalledWith(5);
     expect(chain.limit).toHaveBeenCalledWith(5);
     expect(chain.sort).toHaveBeenCalledWith({ jobDate: -1 });

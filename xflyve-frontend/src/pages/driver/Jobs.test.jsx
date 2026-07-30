@@ -222,4 +222,24 @@ describe("DriverJobs — job status actions", () => {
     expect(await screen.findByText("Work Diary Submitted ✅")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Work Diary Pages" })).not.toBeInTheDocument();
   });
+
+  test("PASS: the job detail card shows its start time", async () => {
+    const job = baseJob({ startTime: "08:00" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderJobs();
+
+    expect(await screen.findByText("Deliver freight")).toBeInTheDocument();
+    expect(screen.getByText("08:00")).toBeInTheDocument();
+  });
+
+  test("PASS: a legacy job with no start time shows a placeholder instead of crashing", async () => {
+    const job = baseJob({ startTime: undefined });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+
+    renderJobs();
+
+    expect(await screen.findByText("Deliver freight")).toBeInTheDocument();
+    expect(screen.getByText("Start Time")).toBeInTheDocument();
+  });
 });

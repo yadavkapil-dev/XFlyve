@@ -23,7 +23,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import RouteOutlinedIcon from "@mui/icons-material/RouteOutlined";
-import SearchIcon from "@mui/icons-material/Search";
+import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { getAllJobs, deleteJob, getAllTrucks, getAllTruckAssignments, getAllDrivers, updateJob } from "../../api";
@@ -86,27 +86,17 @@ const Jobs = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filterDriver, setFilterDriver] = useState("");
   const [filterDate, setFilterDate] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterJobType, setFilterJobType] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [pagination, setPagination] = useState(null);
 
   const navigate = useNavigate();
 
-  // Debounce the search box so we don't fire a request on every keystroke.
-  useEffect(() => {
-    const handle = setTimeout(() => setSearch(searchInput.trim()), 400);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
-
   // Any filter change should reset back to page 1 — staying on, say, page 3
   // of a now much-shorter filtered result set would just show an empty page.
   useEffect(() => {
     setPage(1);
-  }, [filterDriver, filterDate, filterStatus, filterJobType, search]);
+  }, [filterDriver, filterDate]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -117,9 +107,6 @@ const Jobs = () => {
         params.dateFrom = filterDate;
         params.dateTo = filterDate;
       }
-      if (filterStatus) params.status = filterStatus;
-      if (filterJobType) params.jobType = filterJobType;
-      if (search) params.search = search;
 
       const res = await getAllJobs(params);
       setJobs(res.data.data || []);
@@ -129,7 +116,7 @@ const Jobs = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, filterDriver, filterDate, filterStatus, filterJobType, search]);
+  }, [page, limit, filterDriver, filterDate]);
 
   const fetchTrucksDrivers = async () => {
     try {
@@ -157,10 +144,6 @@ const Jobs = () => {
   const clearFilters = () => {
     setFilterDriver("");
     setFilterDate("");
-    setFilterStatus("");
-    setFilterJobType("");
-    setSearchInput("");
-    setSearch("");
   };
 
   const selectableTrucks = useMemo(() => trucks.filter(isSelectableTruck), [trucks]);
@@ -173,11 +156,14 @@ const Jobs = () => {
       description: job.description,
       pickupLocation: job.pickupLocation,
       deliveryLocation: job.deliveryLocation,
-      customerName: job.customerName || "",
       truckId: job.assignedTruck?._id || "",
       assignedTo: job.assignedTo?._id || "",
       jobType: job.jobType,
       jobDate: job.jobDate ? dayjs(job.jobDate).format("YYYY-MM-DD") : "",
+      // Legacy jobs created before this field existed have no startTime —
+      // render as blank rather than crashing; the admin must fill it in
+      // before the update can be saved (see the required-fields check below).
+      startTime: job.startTime || "",
     });
     setEditError("");
     setEditOpen(true);
@@ -211,7 +197,7 @@ const Jobs = () => {
   };
 
   const handleEditSubmit = async () => {
-    if (!editJob?.title || !editJob.description || !editJob.truckId || !editJob.assignedTo || !editJob.jobDate || !editJob.pickupLocation || !editJob.deliveryLocation || !editJob.jobType) {
+    if (!editJob?.title || !editJob.truckId || !editJob.assignedTo || !editJob.jobDate || !editJob.startTime || !editJob.pickupLocation || !editJob.deliveryLocation || !editJob.jobType) {
       setEditError("Please fill all required fields");
       return;
     }
@@ -229,11 +215,11 @@ const Jobs = () => {
         description: editJob.description,
         pickupLocation: editJob.pickupLocation,
         deliveryLocation: editJob.deliveryLocation,
-        customerName: editJob.customerName,
         assignedTruck: editJob.truckId,
         assignedTo: editJob.assignedTo,
         jobType: editJob.jobType,
         jobDate: editJob.jobDate,
+        startTime: editJob.startTime,
       });
       setEditOpen(false);
       fetchJobs();
@@ -274,29 +260,10 @@ const Jobs = () => {
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
 
         <Paper elevation={0} sx={{ p: 2, mb: 2.5, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.4fr 1fr 1fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
-            <TextField
-              fullWidth
-              label="Search"
-              placeholder="Customer, pickup or delivery location"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: palette.muted }} fontSize="small" /> }}
-            />
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1.4fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
             <TextField select fullWidth label="Driver" value={filterDriver} onChange={(e) => setFilterDriver(e.target.value)}>
               <MenuItem value="">All Drivers</MenuItem>
               {drivers.map((d) => <MenuItem key={d._id} value={d._id}>{d.name}</MenuItem>)}
-            </TextField>
-            <TextField select fullWidth label="Status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-              <MenuItem value="">All Statuses</MenuItem>
-              <MenuItem value="pending">Pending</MenuItem>
-              <MenuItem value="in-progress">In progress</MenuItem>
-              <MenuItem value="completed">Completed</MenuItem>
-            </TextField>
-            <TextField select fullWidth label="Run Type" value={filterJobType} onChange={(e) => setFilterJobType(e.target.value)}>
-              <MenuItem value="">All Types</MenuItem>
-              <MenuItem value="local">Local</MenuItem>
-              <MenuItem value="interstate">Interstate</MenuItem>
             </TextField>
             <TextField fullWidth type="date" label="Run Date" InputLabelProps={{ shrink: true }} value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
             <Button variant="outlined" onClick={clearFilters} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
@@ -329,10 +296,11 @@ const Jobs = () => {
                     <Typography fontWeight={900} sx={{ color: palette.ink }}>
                       {job.pickupLocation || "Pickup"} → {job.deliveryLocation || "Delivery"}
                     </Typography>
-                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(4, 1fr)" }, gap: 1 }}>
                       <DetailPill icon={<PersonOutlineIcon />} label="Driver" value={job.assignedTo?.name || "N/A"} />
                       <DetailPill icon={<LocalShippingIcon />} label="Truck" value={job.assignedTruck?.truckNumber || "N/A"} />
                       <DetailPill icon={<RouteOutlinedIcon />} label="Date" value={job.jobDate ? dayjs(job.jobDate).format("DD MMM YYYY") : "—"} />
+                      <DetailPill icon={<ScheduleOutlinedIcon />} label="Start Time" value={job.startTime} />
                     </Box>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                       <Button fullWidth variant="contained" startIcon={<EditIcon />} onClick={() => openEdit(job)} sx={{ minHeight: 48, borderRadius: 3, bgcolor: palette.ink, fontWeight: 900 }}>Edit</Button>
@@ -358,10 +326,9 @@ const Jobs = () => {
             {editError && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{editError}</Alert>}
             <Stack spacing={1.5} sx={{ pt: 1 }}>
               <TextField fullWidth label="Run Title" name="title" value={editJob?.title || ""} onChange={handleEditChange} required />
-              <TextField fullWidth label="Description" name="description" value={editJob?.description || ""} onChange={handleEditChange} multiline rows={3} required />
+              <TextField fullWidth label="Description" name="description" value={editJob?.description || ""} onChange={handleEditChange} multiline rows={3} />
               <TextField fullWidth label="Pickup" name="pickupLocation" value={editJob?.pickupLocation || ""} onChange={handleEditChange} required />
               <TextField fullWidth label="Delivery" name="deliveryLocation" value={editJob?.deliveryLocation || ""} onChange={handleEditChange} required />
-              <TextField fullWidth label="Customer Name" name="customerName" value={editJob?.customerName || ""} onChange={handleEditChange} />
               <TextField select fullWidth label="Truck" name="truckId" value={editJob?.truckId || ""} onChange={handleTruckChange} required>
                 {selectedEditTruck && !isSelectableTruck(selectedEditTruck) && (
                   <MenuItem value={selectedEditTruck._id} disabled>{selectedEditTruck.truckNumber} · unavailable</MenuItem>
@@ -376,6 +343,7 @@ const Jobs = () => {
                 <MenuItem value="interstate">Interstate</MenuItem>
               </TextField>
               <TextField fullWidth label="Run Date" type="date" name="jobDate" value={editJob?.jobDate || ""} onChange={handleEditChange} InputLabelProps={{ shrink: true }} required />
+              <TextField fullWidth label="Start Time" type="time" name="startTime" value={editJob?.startTime || ""} onChange={handleEditChange} InputLabelProps={{ shrink: true }} required />
             </Stack>
 
             {editJob?._id && (

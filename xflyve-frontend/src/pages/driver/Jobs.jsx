@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { getJobsByDriver, listPodsByDriver, listWorkDiariesByDriver, updateJob } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
@@ -388,6 +389,7 @@ const DriverJobs = () => {
                       <DetailItem icon={<RouteOutlinedIcon />} label="Delivery" value={job.deliveryLocation} />
                       <DetailItem icon={<LocalShippingIcon />} label="Truck" value={job.assignedTruck?.truckNumber} />
                       <DetailItem icon={<AssignmentTurnedInIcon />} label="Job Type" value={job.jobType} />
+                      <DetailItem icon={<AccessTimeIcon />} label="Start Time" value={job.startTime} />
                     </Box>
 
                     <Box>

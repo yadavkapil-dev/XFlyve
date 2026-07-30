@@ -21,10 +21,6 @@ const jobSchema = new mongoose.Schema(
       trim: true,
       required: true,
     },
-    customerName: {
-      type: String,
-      trim: true,
-    },
     customerReference: {
       type: String,
       trim: true,
@@ -65,9 +61,20 @@ const jobSchema = new mongoose.Schema(
         ref: "WorkDiary",
       },
     ],
-    jobDate: {               
+    jobDate: {
       type: Date,
       required: true,
+    },
+    // Required on create (createJobValidator) but deliberately NOT
+    // schema-required: jobTransitionService's startJob/completeJob call
+    // job.save() on every status transition, and making this a hard schema
+    // requirement would break saving any job created before this field
+    // existed (every driver start/complete on legacy data would start
+    // failing validation). "Required" is enforced at the create-time
+    // validator and the admin edit-dialog UI instead.
+    startTime: {
+      type: String,
+      trim: true,
     },
     status: {
       type: String,

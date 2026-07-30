@@ -66,10 +66,45 @@ describe("adminController.downloadAllPods", () => {
     JobPod.find.mockReturnValueOnce(findChain([]));
 
     const res = makeResponse();
-    await controller.downloadAllPods({}, res);
+    await controller.downloadAllPods({ query: {} }, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test("always scopes the query to status: approved", async () => {
+    const { controller, JobPod } = loadController();
+    JobPod.find.mockReturnValueOnce(findChain([]));
+
+    const res = makeResponse();
+    await controller.downloadAllPods({ query: { date: "2026-07-15" } }, res);
+
+    const calledQuery = JobPod.find.mock.calls[0][0];
+    expect(calledQuery.status).toBe("approved");
+  });
+
+  test("an explicit date builds a single-day uploadDate range", async () => {
+    const { controller, JobPod } = loadController();
+    JobPod.find.mockReturnValueOnce(findChain([]));
+
+    const res = makeResponse();
+    await controller.downloadAllPods({ query: { date: "2026-07-15" } }, res);
+
+    const calledQuery = JobPod.find.mock.calls[0][0];
+    expect(calledQuery.uploadDate.$gte.toISOString()).toBe("2026-07-15T00:00:00.000Z");
+    expect(calledQuery.uploadDate.$lt.toISOString()).toBe("2026-07-16T00:00:00.000Z");
+  });
+
+  test("defaults to the server's current UTC date when no date param is given", async () => {
+    const { controller, JobPod } = loadController();
+    JobPod.find.mockReturnValueOnce(findChain([]));
+
+    const res = makeResponse();
+    await controller.downloadAllPods({ query: {} }, res);
+
+    const calledQuery = JobPod.find.mock.calls[0][0];
+    const today = new Date().toISOString().slice(0, 10);
+    expect(calledQuery.uploadDate.$gte.toISOString()).toBe(`${today}T00:00:00.000Z`);
   });
 
   test("streams a valid ZIP when every POD fetches successfully", async () => {

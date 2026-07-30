@@ -10,7 +10,7 @@ const generateZip = require("../utils/zipGenerator");
 const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildSearchOr } = require("../utils/search");
-const { normalizeDateOnly, getMondayStartWeekRange } = require("../utils/dateRange");
+const { normalizeDateOnly, buildDateRangeFilter, getMondayStartWeekRange } = require("../utils/dateRange");
 
 const ADMIN_ROLE = "admin"; // Use constants for roles
 
@@ -302,10 +302,21 @@ exports.getDashboardStats = async (req, res) => {
   }
 };
 
-// GET /api/admin/download-all-pods
+// GET /api/admin/download-all-pods?date=YYYY-MM-DD
+// Defaults to the server's current UTC date when omitted. Scoped to
+// approved PODs only (a batch download is for invoice prep, not an
+// unreviewed/rejected-PODs archive) for the one calendar day given, on
+// uploadDate — the same field every other filter/sort on this page already
+// keys off (see applyPodStatusAndDateFilters, POD_SORT_FIELDS).
 exports.downloadAllPods = async (req, res) => {
   try {
-    const pods = await JobPod.find({ fileUrl: { $exists: true, $ne: null } })
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const dateFilter = buildDateRangeFilter("uploadDate", { from: date, to: date });
+
+    const query = { fileUrl: { $exists: true, $ne: null }, status: "approved" };
+    if (dateFilter) Object.assign(query, dateFilter);
+
+    const pods = await JobPod.find(query)
       .select("fileUrl driverId uploadDate createdAt")
       .populate("driverId", "name")
       .lean();

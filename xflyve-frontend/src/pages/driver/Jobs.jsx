@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
-import { getJobsByDriver, listPodsByDriver, updateJob } from "../../api";
+import { getJobsByDriver, listPodsByDriver, listWorkDiariesByDriver, updateJob } from "../../api";
 import { useAuth } from "../../contexts/AuthContext";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
@@ -74,9 +74,12 @@ const referencesJob = (record, jobId) => {
   return Boolean(linkedJobId && currentJobId && linkedJobId === currentJobId);
 };
 
-const getLinkedPod = (pods, jobId) => {
-  return [...pods]
-    .filter((pod) => referencesJob(pod, jobId))
+// Shared by PODs and work diaries — same shape (driverId/jobId-linked
+// upload records), same "most recent wins" rule for picking the one to
+// show/lock against.
+const getLatestForJob = (records, jobId) => {
+  return [...records]
+    .filter((record) => referencesJob(record, jobId))
     .sort(
       (a, b) =>
         new Date(b.uploadDate || b.createdAt || 0) -
@@ -129,6 +132,7 @@ const DriverJobs = () => {
   const driverId = user?._id || user?.id;
   const [jobs, setJobs] = useState([]);
   const [pods, setPods] = useState([]);
+  const [diaries, setDiaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState("");
   const [error, setError] = useState("");
@@ -139,18 +143,22 @@ const DriverJobs = () => {
     const fetchJobs = async () => {
       setLoading(true);
       setError("");
-      const [jobsResult, podsResult] = await Promise.allSettled([
+      const [jobsResult, podsResult, diariesResult] = await Promise.allSettled([
           getJobsByDriver(driverId),
           listPodsByDriver(driverId, { limit: 100 }),
+          listWorkDiariesByDriver(driverId, { limit: 100 }),
       ]);
 
       setJobs(jobsResult.status === "fulfilled" ? jobsResult.value.data.data || [] : []);
       setPods(podsResult.status === "fulfilled" ? podsResult.value?.data || [] : []);
+      setDiaries(diariesResult.status === "fulfilled" ? diariesResult.value?.data || [] : []);
 
       if (jobsResult.status === "rejected") {
         setError(jobsResult.reason?.response?.data?.message || "Failed to fetch jobs.");
       } else if (podsResult.status === "rejected") {
         setError("Jobs loaded, but POD status could not be checked.");
+      } else if (diariesResult.status === "rejected") {
+        setError("Jobs loaded, but work diary status could not be checked.");
       }
 
       setLoading(false);
@@ -330,7 +338,8 @@ const DriverJobs = () => {
           <Stack spacing={2}>
             {visibleJobs.map((job) => {
               const statusMeta = getStatusMeta(job.status);
-              const linkedPod = getLinkedPod(pods, job._id || job.id);
+              const linkedPod = getLatestForJob(pods, job._id || job.id);
+              const linkedDiary = getLatestForJob(diaries, job._id || job.id);
               const isInterstateJob = job.jobType === "interstate";
               return (
                 <Paper
@@ -393,9 +402,24 @@ const DriverJobs = () => {
                           still the only way to reach that upload flow. */}
                       {isInterstateJob && (
                         <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 1 }}>
-                          <Button variant="outlined" startIcon={<DescriptionOutlinedIcon />} onClick={() => navigate(`/driver/work-diary/${job._id}`)} sx={{ minHeight: 46, borderRadius: 3, fontWeight: 850 }}>
-                            Work Diary Pages
-                          </Button>
+                          {linkedDiary ? (
+                            // Same lock as the POD button above once a
+                            // record exists for this job — Edit/Replace
+                            // for an already-submitted diary lives on the
+                            // Diary history page now, not duplicated here.
+                            <Button
+                              variant="contained"
+                              startIcon={<CheckCircleOutlineIcon />}
+                              disabled
+                              sx={{ minHeight: 46, borderRadius: 3, fontWeight: 850 }}
+                            >
+                              Work Diary Submitted ✅
+                            </Button>
+                          ) : (
+                            <Button variant="outlined" startIcon={<DescriptionOutlinedIcon />} onClick={() => navigate(`/driver/work-diary/${job._id}`)} sx={{ minHeight: 46, borderRadius: 3, fontWeight: 850 }}>
+                              Work Diary Pages
+                            </Button>
+                          )}
                         </Box>
                       )}
                     </Stack>

@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import DriverJobs from "./Jobs";
 import { useAuth } from "../../contexts/AuthContext";
-import { getJobsByDriver, listPodsByDriver, updateJob } from "../../api";
+import { getJobsByDriver, listPodsByDriver, listWorkDiariesByDriver, updateJob } from "../../api";
 
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: vi.fn(),
@@ -16,6 +16,7 @@ vi.mock("../../contexts/AuthContext", () => ({
 vi.mock("../../api", () => ({
   getJobsByDriver: vi.fn(),
   listPodsByDriver: vi.fn(),
+  listWorkDiariesByDriver: vi.fn(),
   updateJob: vi.fn(),
 }));
 
@@ -49,6 +50,7 @@ describe("DriverJobs — job status actions", () => {
   beforeEach(() => {
     useAuth.mockReturnValue({ user: { _id: "driver1" } });
     listPodsByDriver.mockResolvedValue({ data: [] });
+    listWorkDiariesByDriver.mockResolvedValue({ data: [] });
   });
 
   test("PASS: a pending job shows 'Start Job'; clicking it calls updateJob with status 'in-progress' and reflects the new status", async () => {
@@ -156,5 +158,16 @@ describe("DriverJobs — job status actions", () => {
     renderJobs();
 
     expect(await screen.findByRole("button", { name: "Work Diary Pages" })).toBeInTheDocument();
+  });
+
+  test("PASS: an interstate job with an uploaded work diary locks the button, matching the POD button's lock", async () => {
+    const job = baseJob({ jobType: "interstate", status: "completed" });
+    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
+    listWorkDiariesByDriver.mockResolvedValue({ data: [{ _id: "diary1", jobId: "job1", status: "pending" }] });
+
+    renderJobs();
+
+    expect(await screen.findByText("Work Diary Submitted ✅")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Work Diary Pages" })).not.toBeInTheDocument();
   });
 });

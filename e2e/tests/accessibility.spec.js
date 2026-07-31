@@ -79,7 +79,7 @@ const seedJobWithPendingPod = async () => {
 
   const truckRes = await api.post("admin/trucks", {
     headers: adminAuth,
-    data: { truckNumber: A11Y_TRUCK_NUMBER, capacity: 1000 },
+    data: { truckNumber: A11Y_TRUCK_NUMBER },
   });
   const { data: truck } = await truckRes.json();
 

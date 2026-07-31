@@ -43,7 +43,13 @@ describe("admin WorkDiary — no pending-approval section", () => {
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview-url");
     globalThis.URL.revokeObjectURL = vi.fn();
-    getAllDrivers.mockResolvedValue({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } });
+    // WorkDiary fetches drivers in two calls (active, then archived) so the
+    // "Select Driver" dropdown can include departed drivers too — the
+    // second call resolves empty here so tests see exactly one "Jane
+    // Driver" entry, not a duplicate.
+    getAllDrivers
+      .mockResolvedValueOnce({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
     listWorkDiariesByDriver.mockResolvedValue({ data: [], pagination: null });
   });
 
@@ -62,9 +68,11 @@ describe("admin WorkDiary — driver history section", () => {
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview-url");
     globalThis.URL.revokeObjectURL = vi.fn();
-    getAllDrivers.mockResolvedValue({
-      data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] },
-    });
+    getAllDrivers
+      .mockResolvedValueOnce({
+        data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] },
+      })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
   });
 
   test("PASS: the driver dropdown shows the driver's name only, not name + email", async () => {
@@ -130,7 +138,9 @@ describe("admin WorkDiary — inline preview", () => {
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview-url");
     globalThis.URL.revokeObjectURL = vi.fn();
-    getAllDrivers.mockResolvedValue({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } });
+    getAllDrivers
+      .mockResolvedValueOnce({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
   });
 
   const selectJaneDriver = async () => {
@@ -203,9 +213,11 @@ describe("admin WorkDiary — date-range bulk download", () => {
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-zip-url");
     globalThis.URL.revokeObjectURL = vi.fn();
-    getAllDrivers.mockResolvedValue({
-      data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] },
-    });
+    getAllDrivers
+      .mockResolvedValueOnce({
+        data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] },
+      })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
     listWorkDiariesByDriver.mockResolvedValue({ data: [], pagination: null });
   });
 

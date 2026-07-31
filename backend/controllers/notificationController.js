@@ -25,7 +25,7 @@ exports.getNotifications = async (req, res) => {
     }
 
     const [notifications, total] = await Promise.all([
-      Notification.find(query).sort(sort).skip(skip).limit(limit).lean(),
+      Notification.find(query).sort(sort).skip(skip).limit(limit).populate("relatedJobId", "title").lean(),
       Notification.countDocuments(query),
     ]);
 

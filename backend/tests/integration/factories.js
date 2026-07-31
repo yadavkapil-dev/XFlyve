@@ -26,7 +26,6 @@ const createDriver = async (overrides = {}) => {
 const createTruck = async (overrides = {}) => {
   return Truck.create({
     truckNumber: overrides.truckNumber || unique("TRK"),
-    capacity: overrides.capacity ?? 10,
     status: overrides.status || "available",
     recordStatus: overrides.recordStatus || "active",
   });

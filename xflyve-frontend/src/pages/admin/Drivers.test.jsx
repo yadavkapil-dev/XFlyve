@@ -118,13 +118,13 @@ describe("admin Drivers — archive (not permanent delete) wording", () => {
     getAllDrivers.mockResolvedValue({ data: { data: [driver()] } });
   });
 
-  test("PASS: the confirmation dialog describes archiving, not permanent deletion", async () => {
+  test("PASS: the confirmation dialog is labeled Delete but its body explains this archives, not permanently deletes", async () => {
     render(<Drivers />);
     await screen.findByText("Jane Driver");
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(await screen.findByText("Archive this driver?")).toBeInTheDocument();
+    expect(await screen.findByText("Delete this driver?")).toBeInTheDocument();
     expect(screen.getByText(/not a permanent delete/i)).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -136,7 +136,7 @@ describe("admin Drivers — archive (not permanent delete) wording", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(deleteDriver).toHaveBeenCalledWith("driver1"));
     expect(await screen.findByText("Driver archived")).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("admin Drivers — archive (not permanent delete) wording", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(deleteDriver).toHaveBeenCalledWith("driver1"));
     expect(await screen.findByText(/archived/i)).toBeInTheDocument();

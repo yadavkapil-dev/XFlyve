@@ -6,14 +6,14 @@ const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildSearchOr } = require("../utils/search");
 
-const TRUCK_SORT_FIELDS = ["truckNumber", "createdAt", "capacity"];
+const TRUCK_SORT_FIELDS = ["truckNumber", "createdAt"];
 const TRUCK_DEFAULT_SORT = { truckNumber: 1 };
 
 /**
  * @desc Get all trucks — paginated, searchable, filterable
  * @route GET /api/trucks
  * @access Admin only (or configurable)
- * Query params: page, limit, sort (truckNumber|createdAt|capacity), search
+ * Query params: page, limit, sort (truckNumber|createdAt), search
  * (matches truckNumber), status, recordStatus (defaults to excluding archived).
  */
 exports.getAllTrucks = async (req, res) => {
@@ -66,7 +66,7 @@ exports.getAllTrucks = async (req, res) => {
  */
 exports.addTruck = async (req, res) => {
   try {
-    const { truckNumber, model, capacity, status, recordStatus, assignedDriver, lastMaintenanceDate } = req.body;
+    const { truckNumber, model, status, recordStatus, assignedDriver, lastMaintenanceDate } = req.body;
     const normalizedTruckNumber = truckNumber.trim().toUpperCase();
 
     const existingTruck = await Truck.findOne({ truckNumber: normalizedTruckNumber });
@@ -78,7 +78,6 @@ exports.addTruck = async (req, res) => {
     }
 
     if (existingTruck) {
-      existingTruck.capacity = capacity;
       existingTruck.status = status === "out-of-service" ? "out-of-service" : "available";
       existingTruck.recordStatus = "active";
       existingTruck.assignedDriver = assignedDriver;
@@ -96,7 +95,6 @@ exports.addTruck = async (req, res) => {
     const newTruck = new Truck({
       truckNumber: normalizedTruckNumber,
       model,
-      capacity,
       status: status === "out-of-service" ? "out-of-service" : "available",
       recordStatus,
       assignedDriver,
@@ -142,7 +140,7 @@ exports.updateTruck = async (req, res) => {
       return res.status(404).json({ success: false, message: "Truck not found" });
     }
 
-    const { truckNumber, capacity, status, recordStatus, assignedDriver, lastMaintenanceDate } = req.body;
+    const { truckNumber, status, recordStatus, assignedDriver, lastMaintenanceDate } = req.body;
 
     if (status === "out-of-service") {
       const activeJob = await Job.exists({
@@ -160,7 +158,6 @@ exports.updateTruck = async (req, res) => {
     }
 
     if (truckNumber !== undefined) truck.truckNumber = truckNumber;
-    if (capacity !== undefined) truck.capacity = capacity;
     if (status !== undefined) truck.status = status;
     if (recordStatus !== undefined) truck.recordStatus = recordStatus;
     if (assignedDriver !== undefined) truck.assignedDriver = assignedDriver;

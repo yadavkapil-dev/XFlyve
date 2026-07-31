@@ -10,7 +10,6 @@ import {
   DialogContentText,
   DialogTitle,
   FormControlLabel,
-  MenuItem,
   Paper,
   Stack,
   Switch,
@@ -22,9 +21,7 @@ import BuildCircleOutlinedIcon from "@mui/icons-material/BuildCircleOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
-import SearchIcon from "@mui/icons-material/Search";
 import { getAllTrucks, createTruck, updateTruck, deleteTruck } from "../../api";
-import PaginationControls from "../../components/PaginationControls";
 
 const palette = {
   ink: "#0b1220",
@@ -40,6 +37,10 @@ const palette = {
   rose: "#b42318",
 };
 
+// Fixed high limit instead of pagination — matches the same small-fleet
+// simplification already applied to Drivers/Logs/Jobs/PODs.
+const TRUCKS_FETCH_LIMIT = 100;
+
 const statusMeta = (status) => {
   if (status === "out-of-service" || status === "maintenance") return { color: palette.rose, label: "Out of service" };
   if (status === "on-route" || status === "on route") return { color: palette.amber, label: "On route" };
@@ -51,70 +52,41 @@ const Trucks = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [formData, setFormData] = useState({ truckNumber: "", capacity: "", outOfService: false });
+  const [formData, setFormData] = useState({ truckNumber: "", outOfService: false });
   const [editTruckId, setEditTruckId] = useState(null);
   const [deleteTruckId, setDeleteTruckId] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [pagination, setPagination] = useState(null);
   const [outOfServiceCount, setOutOfServiceCount] = useState(0);
-
-  // Debounce the search box so we don't fire a request on every keystroke.
-  useEffect(() => {
-    const handle = setTimeout(() => setSearch(searchInput.trim()), 400);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
-
-  // Any filter change should reset back to page 1.
-  useEffect(() => {
-    setPage(1);
-  }, [filterStatus, search]);
 
   const fetchTrucks = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, limit, sort: "truckNumber" };
-      if (filterStatus) params.status = filterStatus;
-      if (search) params.search = search;
-
-      const res = await getAllTrucks(params);
+      const res = await getAllTrucks({ limit: TRUCKS_FETCH_LIMIT, sort: "truckNumber" });
       setTrucks(res.data.data || []);
-      setPagination(res.data.pagination || null);
       setOutOfServiceCount(res.data.outOfServiceCount ?? 0);
     } catch {
       setError("Failed to load trucks");
     } finally {
       setLoading(false);
     }
-  }, [page, limit, filterStatus, search]);
+  }, []);
 
   useEffect(() => {
     fetchTrucks();
   }, [fetchTrucks]);
 
-  const clearFilters = () => {
-    setFilterStatus("");
-    setSearchInput("");
-    setSearch("");
-  };
-
   const resetForm = () => {
     setEditTruckId(null);
-    setFormData({ truckNumber: "", capacity: "", outOfService: false });
+    setFormData({ truckNumber: "", outOfService: false });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (!formData.truckNumber || !formData.capacity) return setError("Please fill all required fields");
+    if (!formData.truckNumber) return setError("Please fill all required fields");
     try {
       const payload = {
         truckNumber: formData.truckNumber,
-        capacity: formData.capacity,
       };
       if (formData.outOfService) payload.status = "out-of-service";
       if (editTruckId && !formData.outOfService) payload.status = "available";
@@ -136,7 +108,6 @@ const Trucks = () => {
     setEditTruckId(truck._id);
     setFormData({
       truckNumber: truck.truckNumber,
-      capacity: truck.capacity,
       outOfService: truck.status === "out-of-service" || truck.status === "maintenance",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -147,8 +118,13 @@ const Trucks = () => {
     setError("");
     setSuccess("");
     try {
-      await deleteTruck(deleteTruckId);
-      setSuccess("Truck deleted successfully.");
+      const res = await deleteTruck(deleteTruckId);
+      // The backend archives the truck (soft-delete, same pattern as
+      // Drivers) rather than permanently removing it — historical
+      // jobs/assignments still reference this truckId. Surface its own
+      // message rather than a hardcoded "deleted", since "deleted" implies
+      // the record is gone, not just hidden from the active fleet.
+      setSuccess(res.data?.message || "Truck archived.");
       setDeleteTruckId(null);
       fetchTrucks();
     } catch (err) {
@@ -162,7 +138,7 @@ const Trucks = () => {
         <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3.5 }, mb: 3, borderRadius: 5, color: "white", background: `linear-gradient(135deg, ${palette.heroStart} 0%, ${palette.heroMid} 58%, ${palette.heroEnd} 100%)` }}>
           <Chip label="Fleet" size="small" sx={{ mb: 1.5, color: "white", bgcolor: alpha("#fff", 0.12), fontWeight: 850 }} />
           <Typography variant="h4" fontWeight={950} sx={{ letterSpacing: "-0.065em", lineHeight: 1.05 }}>Fleet Management</Typography>
-          <Typography sx={{ mt: 1, color: alpha("#fff", 0.74), lineHeight: 1.6 }}>Track trucks, capacity and maintenance state before assigning work.</Typography>
+          <Typography sx={{ mt: 1, color: alpha("#fff", 0.74), lineHeight: 1.6 }}>Track trucks and maintenance state before assigning work.</Typography>
         </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>{error}</Alert>}
@@ -185,7 +161,6 @@ const Trucks = () => {
             </Stack>
             <Stack spacing={1.5}>
               <TextField label="Truck Number" name="truckNumber" value={formData.truckNumber} onChange={(e) => setFormData((p) => ({ ...p, truckNumber: e.target.value.toUpperCase() }))} required fullWidth disabled={Boolean(editTruckId)} />
-              <TextField label="Capacity" name="capacity" type="number" value={formData.capacity} onChange={(e) => setFormData((p) => ({ ...p, capacity: e.target.value }))} required fullWidth inputProps={{ min: 0 }} />
               <FormControlLabel
                 control={<Switch checked={formData.outOfService} onChange={(e) => setFormData((p) => ({ ...p, outOfService: e.target.checked }))} />}
                 label="Out of service"
@@ -202,28 +177,6 @@ const Trucks = () => {
           <Stack spacing={2}>
             <Typography variant="h5" fontWeight={950} sx={{ color: palette.ink, letterSpacing: "-0.045em" }}>Fleet</Typography>
 
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
-                <TextField
-                  fullWidth
-                  label="Search"
-                  placeholder="Truck number"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: palette.muted }} fontSize="small" /> }}
-                />
-                <TextField select fullWidth label="Status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                  <MenuItem value="">All Statuses</MenuItem>
-                  <MenuItem value="available">Available</MenuItem>
-                  <MenuItem value="on-route">On route</MenuItem>
-                  <MenuItem value="out-of-service">Out of service</MenuItem>
-                </TextField>
-                <Button variant="outlined" onClick={clearFilters} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
-                  Clear
-                </Button>
-              </Box>
-            </Paper>
-
             {loading ? (
               <Paper elevation={0} sx={{ p: 3, borderRadius: 5, border: "1px solid", borderColor: palette.line }}>Loading trucks...</Paper>
             ) : trucks.length === 0 ? (
@@ -239,10 +192,7 @@ const Trucks = () => {
                     <Paper key={truck._id} elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
                       <Stack spacing={1.5}>
                         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                          <Box>
-                            <Typography fontWeight={950} sx={{ color: palette.ink }}>{truck.truckNumber}</Typography>
-                            <Typography variant="body2" sx={{ color: palette.muted }}>Capacity: {truck.capacity || "—"}</Typography>
-                          </Box>
+                          <Typography fontWeight={950} sx={{ color: palette.ink }}>{truck.truckNumber}</Typography>
                           <Chip label={meta.label} sx={{ color: meta.color, bgcolor: alpha(meta.color, 0.1), fontWeight: 900 }} />
                         </Stack>
                         {(truck.status === "out-of-service" || truck.status === "maintenance") && (
@@ -261,20 +211,13 @@ const Trucks = () => {
                 })}
               </Box>
             )}
-
-            <PaginationControls
-              pagination={pagination}
-              onPageChange={setPage}
-              onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
-              palette={palette}
-            />
           </Stack>
         </Box>
 
         <Dialog open={Boolean(deleteTruckId)} onClose={() => setDeleteTruckId(null)} PaperProps={{ sx: { borderRadius: 5 } }}>
           <DialogTitle sx={{ fontWeight: 950 }}>Delete this truck?</DialogTitle>
           <DialogContent>
-            <DialogContentText>If this truck is assigned to jobs or drivers, backend validation should protect those records.</DialogContentText>
+            <DialogContentText>This archives the truck and removes it from the active fleet — it is not a permanent delete. Historical jobs/assignments still reference this truck.</DialogContentText>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={() => setDeleteTruckId(null)}>Cancel</Button>

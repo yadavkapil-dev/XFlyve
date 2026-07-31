@@ -45,6 +45,17 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
     },
+    // Mirrors Activity's own relatedJobId — lets the frontend group
+    // notifications by job (job_started/job_completed use resourceId=the
+    // job itself, but pod/diary/worklog notifications use resourceId=that
+    // resource's own id, never the job's, so grouping needs this separate
+    // field). Null when the resource isn't linked to a job (e.g. a POD
+    // uploaded without a job).
+    relatedJobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      default: null,
+    },
     read: {
       type: Boolean,
       default: false,

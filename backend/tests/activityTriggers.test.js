@@ -44,16 +44,18 @@ describe("Activity: job start/complete (jobTransitionService)", () => {
       findOneAndUpdate: jest.fn(),
       updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
     };
+    const Driver = { findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(leanResult({ name: "Test Driver" })) }) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/job", () => Job);
     jest.doMock("../models/truck", () => Truck);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../utils/dbCapabilities", () => ({ supportsTransactions: jest.fn().mockResolvedValue(false) }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
 
-    return { service: require("../services/jobTransitionService"), Job, Truck, activityService };
+    return { service: require("../services/jobTransitionService"), Job, Truck, Driver, activityService };
   };
 
   afterEach(() => jest.restoreAllMocks());
@@ -303,18 +305,20 @@ describe("Activity: POD upload/approve/reject", () => {
     }));
     JobPod.findById = jest.fn();
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
+    const Driver = { findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(leanResult({ name: "Test Driver" })) }) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/jobPod", () => JobPod);
     jest.doMock("../models/job", () => Job);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../config/cloudinary", fakeCloudinary);
     jest.doMock("streamifier", fakeStreamifier);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
 
-    return { controller: require("../controllers/jobPodController"), JobPod, Job, activityService };
+    return { controller: require("../controllers/jobPodController"), JobPod, Job, Driver, activityService };
   };
 
   afterEach(() => jest.restoreAllMocks());
@@ -343,13 +347,16 @@ describe("Activity: POD upload/approve/reject", () => {
   });
 
   test("approvePOD logs POD_APPROVED, actor = admin, resource = the pod, relatedJobId = pod.jobId", async () => {
-    const { controller, JobPod, activityService } = loadController();
+    const { controller, JobPod, Job, activityService } = loadController();
     const driverId = new mongoose.Types.ObjectId().toString();
     const podId = new mongoose.Types.ObjectId().toString();
     const jobId = new mongoose.Types.ObjectId().toString();
     const adminId = new mongoose.Types.ObjectId().toString();
     const pod = { _id: podId, driverId, jobId, status: "pending", save: jest.fn().mockResolvedValue(undefined) };
     JobPod.findById.mockResolvedValueOnce(pod);
+    // approvePOD now also looks up the linked job's title for the
+    // pod_approved notification wording.
+    Job.findById.mockReturnValueOnce({ select: jest.fn().mockReturnValue(leanResult(null)) });
 
     const req = { params: { podId }, user: { id: adminId, role: "admin" } };
     const res = makeResponse();
@@ -410,18 +417,20 @@ describe("Activity: work diary upload", () => {
       save: jest.fn().mockResolvedValue(undefined),
     }));
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
+    const Driver = { findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(leanResult({ name: "Test Driver" })) }) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/workDiary", () => WorkDiary);
     jest.doMock("../models/job", () => Job);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../config/cloudinary", fakeCloudinary);
     jest.doMock("streamifier", fakeStreamifier);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
 
-    return { controller: require("../controllers/workDiaryController"), WorkDiary, Job, activityService };
+    return { controller: require("../controllers/workDiaryController"), WorkDiary, Job, Driver, activityService };
   };
 
   afterEach(() => jest.restoreAllMocks());
@@ -464,16 +473,18 @@ describe("Activity: work log create", () => {
       save: jest.fn().mockResolvedValue(undefined),
     }));
     const Job = { findOne: jest.fn() };
+    const Driver = { findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(leanResult({ name: "Test Driver" })) }) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
     jest.doMock("../models/job", () => Job);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
 
-    return { controller: require("../controllers/workLogController"), DailyWorkLog, Job, activityService };
+    return { controller: require("../controllers/workLogController"), DailyWorkLog, Job, Driver, activityService };
   };
 
   afterEach(() => jest.restoreAllMocks());

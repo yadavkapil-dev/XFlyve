@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Job = require("../models/job");
 const Truck = require("../models/truck");
+const Driver = require("../models/driver");
 const { supportsTransactions } = require("../utils/dbCapabilities");
 const { notifyAdmins } = require("./notificationService");
 const { logActivity } = require("./activityService");
@@ -124,12 +125,18 @@ const startJob = async (job, actor) => {
   // Centralized here (not in each controller that calls startJob) so every
   // caller — the driver-facing updateJob transition and any future one —
   // gets this notification (and the matching activity record) for free.
+  // A failed name lookup must never block the notification (or the
+  // transition itself, which has already committed above) — same
+  // "never break the business operation" contract notificationService
+  // already applies to notification writes themselves.
+  const startedByDriver = await Driver.findById(job.assignedTo).select("name").lean().catch(() => null);
   await notifyAdmins({
     type: "job_started",
     title: "Job started",
-    message: `${job.title || "A job"} has been started.`,
+    message: `${startedByDriver?.name || "A driver"} started ${job.title || "a job"}.`,
     resourceType: "job",
     resourceId: job._id,
+    relatedJobId: job._id,
   });
 
   await logActivity({
@@ -174,12 +181,14 @@ const completeJob = async (job, actor) => {
 
   const result = await Job.findById(job._id).populate("assignedTruck", "truckNumber").lean();
 
+  const completedByDriver = await Driver.findById(job.assignedTo).select("name").lean().catch(() => null);
   await notifyAdmins({
     type: "job_completed",
     title: "Job completed",
-    message: `${job.title || "A job"} has been completed.`,
+    message: `${completedByDriver?.name || "A driver"} completed ${job.title || "a job"}.`,
     resourceType: "job",
     resourceId: job._id,
+    relatedJobId: job._id,
   });
 
   await logActivity({

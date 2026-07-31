@@ -9,6 +9,10 @@ const makeResponse = () => {
 
 const leanResult = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
 
+// Matches Driver.findById(id).select("name").lean() — used by every
+// notification message that now includes the acting driver's name.
+const driverSelectLean = (value) => ({ select: jest.fn().mockReturnValue(leanResult(value)) });
+
 const fakeCloudinary = () => ({
   uploader: {
     upload_stream: jest.fn((options, callback) => {
@@ -44,11 +48,13 @@ describe("Trigger: job start/complete -> notifyAdmins (jobTransitionService)", (
       findOneAndUpdate: jest.fn(),
       updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
     };
+    const Driver = { findById: jest.fn().mockReturnValue(driverSelectLean({ name: "Test Driver" })) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/job", () => Job);
     jest.doMock("../models/truck", () => Truck);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../utils/dbCapabilities", () => ({ supportsTransactions: jest.fn().mockResolvedValue(false) }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
@@ -72,7 +78,7 @@ describe("Trigger: job start/complete -> notifyAdmins (jobTransitionService)", (
     await service.startJob(jobDoc);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "job_started", resourceType: "job", resourceId: jobId })
+      expect.objectContaining({ type: "job_started", resourceType: "job", resourceId: jobId, relatedJobId: jobId })
     );
   });
 
@@ -89,7 +95,7 @@ describe("Trigger: job start/complete -> notifyAdmins (jobTransitionService)", (
     await service.completeJob(jobDoc);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "job_completed", resourceType: "job", resourceId: jobId })
+      expect.objectContaining({ type: "job_completed", resourceType: "job", resourceId: jobId, relatedJobId: jobId })
     );
   });
 });
@@ -243,18 +249,20 @@ describe("Trigger: POD upload/approve/reject", () => {
     }));
     JobPod.findById = jest.fn();
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
+    const Driver = { findById: jest.fn().mockReturnValue(driverSelectLean({ name: "Test Driver" })) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/jobPod", () => JobPod);
     jest.doMock("../models/job", () => Job);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../config/cloudinary", fakeCloudinary);
     jest.doMock("streamifier", fakeStreamifier);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
 
-    return { controller: require("../controllers/jobPodController"), JobPod, Job, notificationService };
+    return { controller: require("../controllers/jobPodController"), JobPod, Job, Driver, notificationService };
   };
 
   afterEach(() => jest.restoreAllMocks());
@@ -271,7 +279,27 @@ describe("Trigger: POD upload/approve/reject", () => {
     await controller.uploadPOD(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "pod_submitted", resourceType: "jobpod", resourceId: "pod-1" })
+      expect.objectContaining({ type: "pod_submitted", resourceType: "jobpod", resourceId: "pod-1", relatedJobId: null })
+    );
+  });
+
+  test("uploadPOD linked to a job passes that job's id as relatedJobId", async () => {
+    const { controller, Job, notificationService } = loadController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const jobId = new mongoose.Types.ObjectId().toString();
+    Job.findById.mockResolvedValueOnce({ _id: jobId, title: "Britztanz", assignedTo: driverId });
+
+    const req = {
+      file: { buffer: Buffer.from("pdf") },
+      body: { notes: "note", jobId },
+      user: { id: driverId },
+    };
+    const res = makeResponse();
+
+    await controller.uploadPOD(req, res);
+
+    expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "pod_submitted", relatedJobId: jobId })
     );
   });
 
@@ -323,11 +351,13 @@ describe("Trigger: work diary upload", () => {
       save: jest.fn().mockResolvedValue(undefined),
     }));
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
+    const Driver = { findById: jest.fn().mockReturnValue(driverSelectLean({ name: "Test Driver" })) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/workDiary", () => WorkDiary);
     jest.doMock("../models/job", () => Job);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../config/cloudinary", fakeCloudinary);
     jest.doMock("streamifier", fakeStreamifier);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
@@ -351,7 +381,7 @@ describe("Trigger: work diary upload", () => {
     await controller.uploadWorkDiary(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "diary_submitted", resourceType: "workdiary", resourceId: "diary-1" })
+      expect.objectContaining({ type: "diary_submitted", resourceType: "workdiary", resourceId: "diary-1", relatedJobId: null })
     );
   });
 
@@ -370,11 +400,13 @@ describe("Trigger: work log create", () => {
       save: jest.fn().mockResolvedValue(undefined),
     }));
     const Job = { findOne: jest.fn() };
+    const Driver = { findById: jest.fn().mockReturnValue(driverSelectLean({ name: "Test Driver" })) };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
 
     jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
     jest.doMock("../models/job", () => Job);
+    jest.doMock("../models/driver", () => Driver);
     jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
     jest.doMock("../services/notificationService", () => notificationService);
     jest.doMock("../services/activityService", () => activityService);
@@ -405,7 +437,7 @@ describe("Trigger: work log create", () => {
     await controller.createWorkLog(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "worklog_submitted", resourceType: "worklog", resourceId: "log-1" })
+      expect.objectContaining({ type: "worklog_submitted", resourceType: "worklog", resourceId: "log-1", relatedJobId: jobId })
     );
   });
 

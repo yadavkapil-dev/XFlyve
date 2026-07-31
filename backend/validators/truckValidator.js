@@ -9,11 +9,6 @@ exports.truckCreateValidator = [
     .isLength({ min: 2 })
     .withMessage("Truck number too short")
     .escape(),
-  body("capacity")
-    .notEmpty()
-    .withMessage("Capacity is required")
-    .isNumeric()
-    .withMessage("Capacity must be a number"),
   body("status")
     .optional()
     .isIn(["out-of-service"])
@@ -40,10 +35,6 @@ exports.truckUpdateValidator = [
     .notEmpty()
     .withMessage("Truck number cannot be empty")
     .escape(),
-  body("capacity")
-    .optional()
-    .isNumeric()
-    .withMessage("Capacity must be a number"),
   body("status")
     .optional()
     .isIn(["available", "out-of-service"])

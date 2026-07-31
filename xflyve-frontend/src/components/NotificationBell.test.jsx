@@ -106,3 +106,98 @@ describe("NotificationBell — bell + unread count", () => {
     expect(screen.queryByText("Mark all read")).not.toBeInTheDocument();
   });
 });
+
+describe("NotificationBell — grouping by relatedJobId", () => {
+  let markOneRead;
+  let markAllRead;
+
+  beforeEach(() => {
+    markOneRead = vi.fn();
+    markAllRead = vi.fn();
+  });
+
+  test("PASS: two notifications sharing a relatedJobId render under one job-title heading, not two separate entries", async () => {
+    const notifications = [
+      baseNotification({
+        _id: "n2",
+        title: "Job completed",
+        message: "Kapil Yadav completed Britztanz.",
+        relatedJobId: { _id: "job1", title: "Britztanz" },
+      }),
+      baseNotification({
+        _id: "n1",
+        title: "Job started",
+        message: "Kapil Yadav started Britztanz.",
+        relatedJobId: { _id: "job1", title: "Britztanz" },
+      }),
+    ];
+    useNotifications.mockReturnValue({ notifications, unreadCount: 2, markOneRead, markAllRead });
+    render(<NotificationBell />);
+
+    await userEvent.click(screen.getByLabelText("Notifications (2 unread)"));
+
+    // Exactly one "Britztanz" heading, with both notifications listed beneath it.
+    expect(screen.getAllByText("Britztanz")).toHaveLength(1);
+    expect(screen.getByText("Kapil Yadav completed Britztanz.")).toBeInTheDocument();
+    expect(screen.getByText("Kapil Yadav started Britztanz.")).toBeInTheDocument();
+  });
+
+  test("PASS: the most recent job's group heading appears before an older job's group heading", async () => {
+    const notifications = [
+      baseNotification({ _id: "n2", relatedJobId: { _id: "job-new", title: "Newer Run" } }),
+      baseNotification({ _id: "n1", relatedJobId: { _id: "job-old", title: "Older Run" } }),
+    ];
+    useNotifications.mockReturnValue({ notifications, unreadCount: 2, markOneRead, markAllRead });
+    render(<NotificationBell />);
+
+    await userEvent.click(screen.getByLabelText("Notifications (2 unread)"));
+
+    const headings = screen.getAllByText(/Run$/).map((el) => el.textContent);
+    expect(headings.indexOf("Newer Run")).toBeLessThan(headings.indexOf("Older Run"));
+  });
+
+  test("PASS: a notification with no relatedJobId renders individually, without a job heading", async () => {
+    const notification = baseNotification({ relatedJobId: null });
+    useNotifications.mockReturnValue({ notifications: [notification], unreadCount: 1, markOneRead, markAllRead });
+    render(<NotificationBell />);
+
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    expect(screen.getByText("Job assigned")).toBeInTheDocument();
+    expect(screen.getByText("You have a new job")).toBeInTheDocument();
+  });
+
+  test("PASS: clicking a notification inside a job group still marks only that one read", async () => {
+    const notifications = [
+      baseNotification({ _id: "n2", title: "Job completed", relatedJobId: { _id: "job1", title: "Britztanz" } }),
+      baseNotification({ _id: "n1", title: "Job started", read: true, relatedJobId: { _id: "job1", title: "Britztanz" } }),
+    ];
+    useNotifications.mockReturnValue({ notifications, unreadCount: 1, markOneRead, markAllRead });
+    render(<NotificationBell />);
+
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("Job completed"));
+
+    expect(markOneRead).toHaveBeenCalledWith("n2");
+    expect(markOneRead).toHaveBeenCalledTimes(1);
+  });
+
+  test("PASS: mixed groups and standalone notifications render in their original recency order", async () => {
+    const notifications = [
+      baseNotification({ _id: "n3", title: "Standalone latest" }),
+      baseNotification({ _id: "n2", title: "Grouped entry", relatedJobId: { _id: "job1", title: "Britztanz" } }),
+      baseNotification({ _id: "n1", title: "Standalone oldest" }),
+    ];
+    useNotifications.mockReturnValue({ notifications, unreadCount: 3, markOneRead, markAllRead });
+    render(<NotificationBell />);
+
+    await userEvent.click(screen.getByLabelText("Notifications (3 unread)"));
+
+    const allText = document.body.textContent;
+    const latestIdx = allText.indexOf("Standalone latest");
+    const groupIdx = allText.indexOf("Britztanz");
+    const oldestIdx = allText.indexOf("Standalone oldest");
+    expect(latestIdx).toBeLessThan(groupIdx);
+    expect(groupIdx).toBeLessThan(oldestIdx);
+  });
+});

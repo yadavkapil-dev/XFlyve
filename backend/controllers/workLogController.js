@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const DailyWorkLog = require("../models/dailyWorkLog");
 const Job = require("../models/job");
+const Driver = require("../models/driver");
 const logger = require("../utils/logger");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter, normalizeDateOnly: normalizeQueryDate, getMondayStartWeekRange } = require("../utils/dateRange");
@@ -158,12 +159,16 @@ exports.createWorkLog = async (req, res) => {
 
     await newLog.save();
 
+    const submittingDriver = await Driver.findById(driverId).select("name").lean().catch(() => null);
     await notifyAdmins({
       type: "worklog_submitted",
       title: "Work log submitted",
-      message: "A driver submitted a new daily work log for review.",
+      message: validation.job?.title
+        ? `${submittingDriver?.name || "A driver"} submitted a work log for ${validation.job.title}.`
+        : `${submittingDriver?.name || "A driver"} submitted a new daily work log for review.`,
       resourceType: "worklog",
       resourceId: newLog._id,
+      relatedJobId: newLog.jobIds?.[0] || null,
     });
 
     await logActivity({

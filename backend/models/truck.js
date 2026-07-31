@@ -8,11 +8,7 @@ const truckSchema = new mongoose.Schema({
     uppercase: true,
     trim: true,
   },
-  capacity: { 
-    type: Number, 
-    required: true 
-  }, // e.g. tons or cubic meters
-  status: { 
+  status: {
     type: String, 
     enum: ["available", "on-route", "out-of-service"], 
     default: "available" 

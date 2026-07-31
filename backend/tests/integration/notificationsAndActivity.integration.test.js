@@ -103,6 +103,48 @@ describe("Flow: Notification creation (via the real read API)", () => {
     expect(res.status).toBe(403);
   });
 
+  test("PASS: job_started/job_completed notifications carry a populated relatedJobId (job title), so the admin's bell can group them by job", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck();
+
+    const createRes = await request(app)
+      .post("/api/jobs/create")
+      .set("Authorization", authHeader(admin))
+      .send({
+        title: "Britztanz Run",
+        description: "desc",
+        pickupLocation: "A",
+        deliveryLocation: "B",
+        assignedTo: driver._id.toString(),
+        assignedTruck: truck._id.toString(),
+        jobDate: tomorrow(),
+        startTime: "08:00",
+        jobType: "local",
+      });
+    const jobId = createRes.body.data._id;
+
+    await request(app)
+      .put(`/api/jobs/${jobId}`)
+      .set("Authorization", authHeader(driver))
+      .send({ status: "in-progress" });
+    await request(app).put(`/api/jobs/complete/${jobId}`).set("Authorization", authHeader(driver));
+
+    const listRes = await request(app).get("/api/notifications").set("Authorization", authHeader(admin));
+    expect(listRes.status).toBe(200);
+
+    const started = listRes.body.data.find((n) => n.type === "job_started");
+    const completed = listRes.body.data.find((n) => n.type === "job_completed");
+    expect(started).toBeTruthy();
+    expect(completed).toBeTruthy();
+
+    // Both notifications are for the SAME job — relatedJobId is populated
+    // (not just a bare id string) with that job's title, and it's the same
+    // job on both, which is exactly what the frontend groups on.
+    expect(started.relatedJobId).toMatchObject({ _id: jobId, title: "Britztanz Run" });
+    expect(completed.relatedJobId).toMatchObject({ _id: jobId, title: "Britztanz Run" });
+  });
+
   test("PASS: mark-all-read zeroes the unread count for that user only", async () => {
     const admin = await createDriver({ role: "admin" });
     const driver = await createDriver({ role: "driver" });

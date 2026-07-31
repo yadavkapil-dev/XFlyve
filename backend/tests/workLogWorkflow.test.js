@@ -23,6 +23,10 @@ const loadController = () => {
     findOne: jest.fn(),
   };
 
+  const Driver = {
+    findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(leanResult({ name: "Test Driver" })) }),
+  };
+
   const notificationService = {
     notifyUser: jest.fn().mockResolvedValue(null),
     notifyAdmins: jest.fn().mockResolvedValue(null),
@@ -33,6 +37,7 @@ const loadController = () => {
 
   jest.doMock("../models/dailyWorkLog", () => DailyWorkLog);
   jest.doMock("../models/job", () => Job);
+  jest.doMock("../models/driver", () => Driver);
   jest.doMock("../utils/logger", () => ({ error: jest.fn() }));
   jest.doMock("../services/notificationService", () => notificationService);
   jest.doMock("../services/activityService", () => activityService);
@@ -41,6 +46,7 @@ const loadController = () => {
     controller: require("../controllers/workLogController"),
     DailyWorkLog,
     Job,
+    Driver,
     notificationService,
     activityService,
   };

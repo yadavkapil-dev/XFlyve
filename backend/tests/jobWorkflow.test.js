@@ -68,8 +68,17 @@ const loadJobController = () => {
     populate: jest.fn(),
     updateOne: jest.fn(),
   };
+  // Default (no per-test override) supports both call shapes used against
+  // this mock: createJob/reassignment's own `Driver.findById(id).lean()`,
+  // and jobTransitionService's `Driver.findById(id).select("name").lean()`
+  // for the job_started/job_completed notification wording — without this,
+  // a driver-status-transition test that never overrides Driver.findById
+  // would hit `.select` on undefined and throw.
   const Driver = {
-    findById: jest.fn(),
+    findById: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue(null),
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ name: "Test Driver" }) }),
+    }),
   };
   const Truck = {
     findById: jest.fn(),

@@ -9,7 +9,7 @@ module.exports = {
       description: 'Any authenticated user (admin or driver), not admin-only, unlike most other list endpoints in this API. Response includes a fleet-wide `outOfServiceCount` alongside `data`/`pagination` — that count is independent of the current filters (it always reflects the whole fleet).',
       security: h.bearer,
       parameters: [
-        h.pageParam, h.limitParam, h.sortParam(["truckNumber", "createdAt", "capacity"], "truckNumber"),
+        h.pageParam, h.limitParam, h.sortParam(["truckNumber", "createdAt"], "truckNumber"),
         { name: "search", in: "query", schema: { type: "string" }, description: "Matches truckNumber." },
         { name: "status", in: "query", schema: { type: "string", enum: ["available", "on-route", "out-of-service"] } },
         { name: "recordStatus", in: "query", schema: { type: "string", enum: ["active", "inactive", "archived"] }, description: "Defaults to excluding archived if omitted." },
@@ -33,8 +33,8 @@ module.exports = {
         content: {
           "application/json": {
             schema: {
-              type: "object", required: ["truckNumber", "capacity"],
-              properties: { truckNumber: { type: "string", example: "TRK-104" }, capacity: { type: "number", example: 12 }, status: { type: "string", enum: ["out-of-service"] }, recordStatus: { type: "string", enum: ["active", "inactive", "archived"] }, assignedDriver: { type: "string", example: FAKE_DRIVER_ID }, lastMaintenanceDate: { type: "string", format: "date" } },
+              type: "object", required: ["truckNumber"],
+              properties: { truckNumber: { type: "string", example: "TRK-104" }, status: { type: "string", enum: ["out-of-service"] }, recordStatus: { type: "string", enum: ["active", "inactive", "archived"] }, assignedDriver: { type: "string", example: FAKE_DRIVER_ID }, lastMaintenanceDate: { type: "string", format: "date" } },
             },
           },
         },
@@ -44,7 +44,7 @@ module.exports = {
         401: h.unauthorized,
         403: h.forbiddenSuccessEnvelope("Access denied: Admins only"),
         409: h.conflictSuccess("A truck with this truck number already exists"),
-        422: h.validationErrorSuccess("Capacity must be a number"),
+        422: h.validationErrorSuccess("Truck number too short"),
         500: h.serverErrorSuccess,
       },
     },
@@ -59,7 +59,7 @@ module.exports = {
       requestBody: {
         content: {
           "application/json": {
-            schema: { type: "object", properties: { truckNumber: { type: "string" }, capacity: { type: "number" }, status: { type: "string", enum: ["available", "out-of-service"] }, recordStatus: { type: "string", enum: ["active", "inactive", "archived"] }, assignedDriver: { type: "string" }, lastMaintenanceDate: { type: "string", format: "date" } } },
+            schema: { type: "object", properties: { truckNumber: { type: "string" }, status: { type: "string", enum: ["available", "out-of-service"] }, recordStatus: { type: "string", enum: ["active", "inactive", "archived"] }, assignedDriver: { type: "string" }, lastMaintenanceDate: { type: "string", format: "date" } } },
           },
         },
       },

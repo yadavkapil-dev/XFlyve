@@ -10,6 +10,7 @@ const findChain = (result) => {
     sort: jest.fn(() => chain),
     skip: jest.fn(() => chain),
     limit: jest.fn(() => chain),
+    populate: jest.fn(() => chain),
     lean: jest.fn().mockResolvedValue(result),
   };
   return chain;
@@ -52,6 +53,18 @@ describe("GET /api/notifications (getNotifications) — pagination/filter, scope
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ pagination: { page: 1, limit: 20, total: 1, totalPages: 1 } })
     );
+  });
+
+  test("populates relatedJobId with just the job's title, for the frontend's by-job grouping", async () => {
+    const { controller, Notification } = loadController();
+    const chain = findChain([]);
+    Notification.find.mockReturnValueOnce(chain);
+    Notification.countDocuments.mockResolvedValueOnce(0);
+
+    const res = makeResponse();
+    await controller.getNotifications({ query: {}, user: { id: VALID_USER_ID } }, res);
+
+    expect(chain.populate).toHaveBeenCalledWith("relatedJobId", "title");
   });
 
   test("page 2 with a smaller limit paginates correctly", async () => {

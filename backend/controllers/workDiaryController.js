@@ -1,5 +1,6 @@
 const WorkDiary = require("../models/workDiary");
 const Job = require("../models/job");
+const Driver = require("../models/driver");
 const mongoose = require("mongoose");
 const { Readable } = require("stream");
 const logger = require("../utils/logger");
@@ -125,12 +126,16 @@ exports.uploadWorkDiary = async (req, res) => {
       );
     }
 
+    const submittingDriver = await Driver.findById(driverId).select("name").lean().catch(() => null);
     await notifyAdmins({
       type: "diary_submitted",
       title: "Work diary submitted",
-      message: "A driver submitted a new work diary for review.",
+      message: linkedJob?.title
+        ? `${submittingDriver?.name || "A driver"} uploaded a work diary for ${linkedJob.title}.`
+        : `${submittingDriver?.name || "A driver"} uploaded a new work diary for review.`,
       resourceType: "workdiary",
       resourceId: newDiary._id,
+      relatedJobId: linkedJob?._id || null,
     });
 
     await logActivity({

@@ -118,12 +118,16 @@ exports.uploadPOD = async (req, res) => {
       );
     }
 
+    const submittingDriver = await Driver.findById(driverId).select("name").lean().catch(() => null);
     await notifyAdmins({
       type: "pod_submitted",
       title: "POD submitted",
-      message: "A driver submitted a new POD for review.",
+      message: linkedJob?.title
+        ? `${submittingDriver?.name || "A driver"} uploaded a POD for ${linkedJob.title}.`
+        : `${submittingDriver?.name || "A driver"} uploaded a new POD for review.`,
       resourceType: "jobpod",
       resourceId: newPOD._id,
+      relatedJobId: linkedJob?._id || null,
     });
 
     await logActivity({
@@ -352,11 +356,14 @@ exports.approvePOD = async (req, res) => {
 
     await pod.save();
 
+    const approvedPodJob = pod.jobId ? await Job.findById(pod.jobId).select("title").lean().catch(() => null) : null;
     await notifyUser({
       recipient: pod.driverId,
       type: "pod_approved",
       title: "POD approved",
-      message: "Your proof of delivery has been approved.",
+      message: approvedPodJob?.title
+        ? `Your POD for ${approvedPodJob.title} has been approved.`
+        : "Your proof of delivery has been approved.",
       resourceType: "jobpod",
       resourceId: pod._id,
     });
@@ -402,13 +409,15 @@ exports.rejectPOD = async (req, res) => {
 
     await pod.save();
 
+    const rejectedPodJob = pod.jobId ? await Job.findById(pod.jobId).select("title").lean().catch(() => null) : null;
+    const podLabel = rejectedPodJob?.title ? `POD for ${rejectedPodJob.title}` : "proof of delivery";
     await notifyUser({
       recipient: pod.driverId,
       type: "pod_rejected",
       title: "POD rejected",
       message: rejectionReason
-        ? `Your proof of delivery was rejected: ${rejectionReason}`
-        : "Your proof of delivery was rejected.",
+        ? `Your ${podLabel} was rejected: ${rejectionReason}`
+        : `Your ${podLabel} was rejected.`,
       resourceType: "jobpod",
       resourceId: pod._id,
     });

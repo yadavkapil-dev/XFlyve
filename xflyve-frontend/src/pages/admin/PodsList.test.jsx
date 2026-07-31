@@ -55,7 +55,13 @@ describe("admin PodsList — pending queue is unfiltered and unpaginated", () =>
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview-url");
     globalThis.URL.revokeObjectURL = vi.fn();
-    getAllDrivers.mockResolvedValue({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } });
+    // PodsList fetches drivers in two calls (active, then archived) so the
+    // "Select Driver" dropdown can include departed drivers too — the
+    // second call resolves empty here so tests see exactly one "Jane
+    // Driver" entry, not a duplicate.
+    getAllDrivers
+      .mockResolvedValueOnce({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
     listPendingPods.mockResolvedValue({ data: [pendingPod()], pagination: null });
     listPodsByDriver.mockResolvedValue({ data: [], pagination: null });
   });
@@ -101,7 +107,9 @@ describe("admin PodsList — inline preview", () => {
     vi.clearAllMocks();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview-url");
     globalThis.URL.revokeObjectURL = vi.fn();
-    getAllDrivers.mockResolvedValue({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } });
+    getAllDrivers
+      .mockResolvedValueOnce({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
     listPodsByDriver.mockResolvedValue({ data: [], pagination: null });
   });
 
@@ -163,9 +171,11 @@ describe("admin PodsList — driver history section", () => {
     globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview-url");
     globalThis.URL.revokeObjectURL = vi.fn();
     listPendingPods.mockResolvedValue({ data: [], pagination: null });
-    getAllDrivers.mockResolvedValue({
-      data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] },
-    });
+    getAllDrivers
+      .mockResolvedValueOnce({
+        data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] },
+      })
+      .mockResolvedValue({ data: { status: "success", data: [] } });
   });
 
   test("PASS: the driver dropdown shows the driver's name only, not name + email", async () => {
@@ -249,7 +259,7 @@ describe("admin PodsList — Download All date picker", () => {
     await userEvent.clear(dateInput);
     await userEvent.type(dateInput, "2026-07-01");
 
-    await userEvent.click(screen.getByRole("button", { name: /Download PODs for Date/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Download PODs" }));
 
     await waitFor(() => expect(downloadAllPods).toHaveBeenCalledWith("2026-07-01"));
   });
@@ -259,7 +269,7 @@ describe("admin PodsList — Download All date picker", () => {
     render(<PodsList />);
     await screen.findByText("No PODs waiting for approval.");
 
-    await userEvent.click(screen.getByRole("button", { name: /Download PODs for Date/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Download PODs" }));
 
     expect(await screen.findByText("No approved POD files found for that date")).toBeInTheDocument();
   });

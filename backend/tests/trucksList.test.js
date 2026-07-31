@@ -82,9 +82,9 @@ describe("GET /api/admin/trucks (getAllTrucks) — pagination/search/filter/sort
     Truck.countDocuments.mockResolvedValueOnce(0);
 
     const res = makeResponse();
-    await controller.getAllTrucks({ query: { sort: "-capacity" } }, res);
+    await controller.getAllTrucks({ query: { sort: "-createdAt" } }, res);
 
-    expect(chain.sort).toHaveBeenCalledWith({ capacity: -1 });
+    expect(chain.sort).toHaveBeenCalledWith({ createdAt: -1 });
   });
 
   test("filter: status", async () => {

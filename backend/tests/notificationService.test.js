@@ -44,8 +44,86 @@ describe("notificationService.notifyUser", () => {
       message: "Your proof of delivery has been approved.",
       resourceType: "jobpod",
       resourceId: "pod1",
+      relatedJobId: null,
     });
     expect(emitToUser).toHaveBeenCalledWith("driver1", "notification:new", { _id: "notif1", recipient: "driver1" });
+  });
+
+  test("passes relatedJobId through to Notification.create when the caller provides one", async () => {
+    const { service, Notification } = loadService();
+    const created = {
+      _id: "notif1",
+      recipient: "driver1",
+      relatedJobId: "job1",
+      populate: jest.fn().mockResolvedValue(undefined),
+      toObject: () => ({ _id: "notif1", recipient: "driver1", relatedJobId: "job1" }),
+    };
+    Notification.create.mockResolvedValueOnce(created);
+
+    await service.notifyUser({
+      recipient: "driver1",
+      type: "pod_approved",
+      title: "POD approved",
+      message: "Your POD for Britztanz has been approved.",
+      resourceType: "jobpod",
+      resourceId: "pod1",
+      relatedJobId: "job1",
+    });
+
+    expect(Notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ relatedJobId: "job1" })
+    );
+  });
+
+  test("populates relatedJobId's job title before emitting, so the live socket push and the REST list carry the same shape", async () => {
+    const { service, Notification, emitToUser } = loadService();
+    const created = {
+      _id: "notif1",
+      recipient: "driver1",
+      relatedJobId: "job1",
+      populate: jest.fn().mockResolvedValue(undefined),
+      toObject: () => ({ _id: "notif1", recipient: "driver1", relatedJobId: { _id: "job1", title: "Britztanz" } }),
+    };
+    Notification.create.mockResolvedValueOnce(created);
+
+    await service.notifyUser({
+      recipient: "driver1",
+      type: "pod_approved",
+      title: "POD approved",
+      message: "Your POD for Britztanz has been approved.",
+      resourceType: "jobpod",
+      resourceId: "pod1",
+      relatedJobId: "job1",
+    });
+
+    expect(created.populate).toHaveBeenCalledWith("relatedJobId", "title");
+    expect(emitToUser).toHaveBeenCalledWith(
+      "driver1",
+      "notification:new",
+      expect.objectContaining({ relatedJobId: { _id: "job1", title: "Britztanz" } })
+    );
+  });
+
+  test("does not attempt to populate when there is no relatedJobId", async () => {
+    const { service, Notification } = loadService();
+    const created = {
+      _id: "notif1",
+      recipient: "driver1",
+      populate: jest.fn(),
+      toObject: () => ({ _id: "notif1", recipient: "driver1" }),
+    };
+    Notification.create.mockResolvedValueOnce(created);
+
+    await service.notifyUser({
+      recipient: "driver1",
+      type: "pod_approved",
+      title: "t",
+      message: "m",
+      resourceType: "jobpod",
+      resourceId: "pod1",
+    });
+
+    expect(created.populate).not.toHaveBeenCalled();
   });
 
   test("a write failure is swallowed — never throws back to the caller", async () => {

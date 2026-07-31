@@ -107,7 +107,6 @@ const openApiSpec = {
         properties: {
           _id: { type: "string", example: FAKE_TRUCK_ID },
           truckNumber: { type: "string", example: "TRK-104" },
-          capacity: { type: "number", example: 12 },
           status: { type: "string", enum: ["available", "on-route", "out-of-service"], example: "available" },
           recordStatus: { type: "string", enum: ["active", "inactive", "archived"], example: "active" },
           assignedDriver: { type: "string", nullable: true, example: FAKE_DRIVER_ID },
@@ -225,6 +224,7 @@ const openApiSpec = {
           message: { type: "string", example: "You have been assigned a new job: Sydney to Melbourne freight run" },
           resourceType: { type: "string", enum: ["job", "jobpod", "workdiary", "worklog"], example: "job" },
           resourceId: { type: "string", example: FAKE_JOB_ID },
+          relatedJobId: { type: "string", nullable: true, example: FAKE_JOB_ID },
           read: { type: "boolean", example: false },
           createdAt: { type: "string", format: "date-time" },
         },

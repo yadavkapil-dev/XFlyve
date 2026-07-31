@@ -35,6 +35,9 @@ const loadService = ({ transactionsSupported = false } = {}) => {
     findOneAndUpdate: jest.fn(),
     updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
   };
+  const Driver = {
+    findById: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(leanResult({ name: "Test Driver" })) }),
+  };
 
   const fakeSession = {
     withTransaction: jest.fn(async (fn) => fn()),
@@ -51,6 +54,7 @@ const loadService = ({ transactionsSupported = false } = {}) => {
 
   jest.doMock("../models/job", () => Job);
   jest.doMock("../models/truck", () => Truck);
+  jest.doMock("../models/driver", () => Driver);
   jest.doMock("../utils/dbCapabilities", () => ({
     supportsTransactions: jest.fn().mockResolvedValue(transactionsSupported),
   }));
@@ -64,7 +68,7 @@ const loadService = ({ transactionsSupported = false } = {}) => {
   const service = require("../services/jobTransitionService");
   const mockedMongoose = require("mongoose");
 
-  return { service, Job, Truck, fakeSession, mockedMongoose, notificationService, activityService };
+  return { service, Job, Truck, Driver, fakeSession, mockedMongoose, notificationService, activityService };
 };
 
 describe("jobTransitionService.startJob", () => {

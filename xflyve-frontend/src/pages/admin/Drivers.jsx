@@ -266,13 +266,13 @@ const Drivers = () => {
         </Box>
 
         <Dialog open={Boolean(deleteDriverId)} onClose={() => setDeleteDriverId(null)} PaperProps={{ sx: { borderRadius: 5 } }}>
-          <DialogTitle sx={{ fontWeight: 950 }}>Archive this driver?</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 950 }}>Delete this driver?</DialogTitle>
           <DialogContent>
             <DialogContentText>This archives the driver account and removes them from the active roster — it is not a permanent delete. Historical jobs/PODs/work diaries still reference this driver.</DialogContentText>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={() => setDeleteDriverId(null)}>Cancel</Button>
-            <Button onClick={handleDeleteConfirm} color="error" variant="contained">Archive</Button>
+            <Button onClick={handleDeleteConfirm} color="error" variant="contained">Delete</Button>
           </DialogActions>
         </Dialog>
 

@@ -1,6 +1,5 @@
 const WorkDiary = require("../models/workDiary");
 const Job = require("../models/job");
-const Driver = require("../models/driver");
 const mongoose = require("mongoose");
 const { Readable } = require("stream");
 const logger = require("../utils/logger");
@@ -8,29 +7,16 @@ const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
 const { parsePagination, buildPaginationMeta, parseSort } = require("../utils/pagination");
 const { buildDateRangeFilter } = require("../utils/dateRange");
-const { notifyUser, notifyAdmins } = require("../services/notificationService");
+const { notifyAdmins } = require("../services/notificationService");
 const { logActivity } = require("../services/activityService");
-const { sendDocumentRejectedEmail } = require("../services/emailService");
 
 const DIARY_HISTORY_DAYS = 30;
 const DIARY_SORT_FIELDS = ["uploadDate", "createdAt", "workDate"];
-const DIARY_DEFAULT_SORT = { createdAt: -1 };
 
-// status + uploadDate-range filters — safe on every diary list endpoint.
-const applyDiaryStatusAndDateFilters = (query, reqQuery) => {
-  if (reqQuery.status) query.status = reqQuery.status;
+// uploadDate-range filter — safe on every diary list endpoint.
+const applyDiaryDateFilter = (query, reqQuery) => {
   const dateFilter = buildDateRangeFilter("uploadDate", { from: reqQuery.dateFrom, to: reqQuery.dateTo });
   if (dateFilter) Object.assign(query, dateFilter);
-  return query;
-};
-
-// driverId filter — only for the admin-wide pending queue, not the
-// single-driver-scoped listWorkDiariesByDriver (same reasoning as PODs:
-// that route's driverId comes from the URL path, not the query string).
-const applyDiaryDriverFilter = (query, reqQuery) => {
-  if (reqQuery.driverId && mongoose.Types.ObjectId.isValid(reqQuery.driverId)) {
-    query.driverId = reqQuery.driverId;
-  }
   return query;
 };
 
@@ -154,7 +140,7 @@ exports.uploadWorkDiary = async (req, res) => {
       resourceType: "workdiary",
       resourceId: newDiary._id,
       relatedJobId: linkedJob?._id || null,
-      after: { status: newDiary.status, jobId: newDiary.jobId },
+      after: { jobId: newDiary.jobId },
     });
 
     return res.status(201).json({ success: true, message: "Work diary uploaded", data: newDiary });
@@ -236,7 +222,7 @@ exports.listWorkDiariesByDriver = async (req, res) => {
       ];
     }
 
-    applyDiaryStatusAndDateFilters(query, req.query);
+    applyDiaryDateFilter(query, req.query);
 
     const [workDiaries, total] = await Promise.all([
       WorkDiary.find(query)
@@ -283,21 +269,7 @@ exports.updateWorkDiary = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
-    if (req.user.role === "driver" && workDiary.status === "approved") {
-      return res.status(409).json({
-        success: false,
-        message: "Approved work diaries are locked and cannot be edited",
-      });
-    }
-
     workDiary.notes = notes || workDiary.notes;
-
-    if (req.user.role === "driver" && workDiary.status === "rejected") {
-      workDiary.status = "pending";
-      workDiary.rejectedBy = null;
-      workDiary.rejectedAt = null;
-      workDiary.rejectionReason = undefined;
-    }
 
     await workDiary.save();
 
@@ -327,13 +299,6 @@ exports.deleteWorkDiary = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
-    if (req.user.role === "driver" && workDiary.status === "approved") {
-      return res.status(409).json({
-        success: false,
-        message: "Approved work diaries are locked and cannot be deleted",
-      });
-    }
-
     if (workDiary.publicId) {
       await cloudinary.uploader.destroy(workDiary.publicId, { resource_type: "raw" });
     }
@@ -348,154 +313,5 @@ exports.deleteWorkDiary = async (req, res) => {
   } catch (err) {
     logger.error("Delete work diary error: %o", err);
     res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-exports.approveWorkDiary = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: "Invalid work diary ID" });
-    }
-
-    const workDiary = await WorkDiary.findById(id);
-    if (!workDiary) return res.status(404).json({ success: false, message: "Work diary not found" });
-
-    const previousStatus = workDiary.status;
-
-    workDiary.status = "approved";
-    workDiary.approvedBy = req.user.id;
-    workDiary.approvedAt = new Date();
-    workDiary.rejectedBy = null;
-    workDiary.rejectedAt = null;
-    workDiary.rejectionReason = undefined;
-
-    await workDiary.save();
-
-    await notifyUser({
-      recipient: workDiary.driverId,
-      type: "diary_approved",
-      title: "Work diary approved",
-      message: "Your work diary has been approved.",
-      resourceType: "workdiary",
-      resourceId: workDiary._id,
-    });
-
-    await logActivity({
-      actorId: req.user.id,
-      actorRole: req.user.role,
-      action: "DIARY_APPROVED",
-      resourceType: "workdiary",
-      resourceId: workDiary._id,
-      relatedJobId: workDiary.jobId,
-      before: { status: previousStatus },
-      after: { status: workDiary.status },
-    });
-
-    return res.status(200).json({ success: true, message: "Work diary approved", data: workDiary });
-  } catch (err) {
-    logger.error("Approve work diary error: %o", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-exports.rejectWorkDiary = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rejectionReason } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: "Invalid work diary ID" });
-    }
-
-    const workDiary = await WorkDiary.findById(id);
-    if (!workDiary) return res.status(404).json({ success: false, message: "Work diary not found" });
-
-    const previousStatus = workDiary.status;
-
-    workDiary.status = "rejected";
-    workDiary.rejectedBy = req.user.id;
-    workDiary.rejectedAt = new Date();
-    workDiary.rejectionReason = rejectionReason;
-    workDiary.approvedBy = null;
-    workDiary.approvedAt = null;
-
-    await workDiary.save();
-
-    await notifyUser({
-      recipient: workDiary.driverId,
-      type: "diary_rejected",
-      title: "Work diary rejected",
-      message: rejectionReason
-        ? `Your work diary was rejected: ${rejectionReason}`
-        : "Your work diary was rejected.",
-      resourceType: "workdiary",
-      resourceId: workDiary._id,
-    });
-
-    // In addition to the in-app notification above, not a replacement.
-    // Own try/catch so a failure here (the driver lookup or the send
-    // itself) can never turn an already-successful rejection into a
-    // failed response — the workDiary.save() above has already committed.
-    try {
-      const rejectedDriver = await Driver.findById(workDiary.driverId).select("email").lean();
-      if (rejectedDriver?.email) {
-        sendDocumentRejectedEmail(rejectedDriver.email, { documentType: "diary", reason: rejectionReason });
-      }
-    } catch (err) {
-      logger.error("Failed to send work diary rejected email: %o", err);
-    }
-
-    await logActivity({
-      actorId: req.user.id,
-      actorRole: req.user.role,
-      action: "DIARY_REJECTED",
-      resourceType: "workdiary",
-      resourceId: workDiary._id,
-      relatedJobId: workDiary.jobId,
-      before: { status: previousStatus },
-      after: { status: workDiary.status },
-      metadata: { rejectionReason: workDiary.rejectionReason },
-    });
-
-    return res.status(200).json({ success: true, message: "Work diary rejected", data: workDiary });
-  } catch (err) {
-    logger.error("Reject work diary error: %o", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Query params: page, limit, sort (uploadDate|createdAt|workDate), driverId,
-// dateFrom/dateTo (uploadDate range).
-exports.listPendingWorkDiaryApprovals = async (req, res) => {
-  try {
-    const { page, limit, skip } = parsePagination(req.query);
-    const sort = parseSort(req.query.sort, DIARY_SORT_FIELDS, DIARY_DEFAULT_SORT);
-
-    const query = { status: "pending" };
-    applyDiaryDriverFilter(query, req.query);
-    const dateFilter = buildDateRangeFilter("uploadDate", { from: req.query.dateFrom, to: req.query.dateTo });
-    if (dateFilter) Object.assign(query, dateFilter);
-
-    const [diaries, total] = await Promise.all([
-      WorkDiary.find(query)
-        .populate("driverId", "name email driverType role")
-        .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
-        .populate("truckId", "truckNumber")
-        .sort(sort)
-        .skip(skip)
-        .limit(limit),
-      WorkDiary.countDocuments(query),
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      data: diaries,
-      pagination: buildPaginationMeta({ page, limit, total }),
-    });
-  } catch (err) {
-    logger.error("List pending work diary approvals error: %o", err);
-    return res.status(500).json({ success: false, message: "Server error" });
   }
 };

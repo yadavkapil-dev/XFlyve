@@ -13,7 +13,6 @@ const request = require("supertest");
 const { startTestDb, stopTestDb, clearTestDb } = require("./testDb");
 const { createDriver, createTruck, createJob, authHeader } = require("./factories");
 const JobPod = require("../../models/jobPod");
-const WorkDiary = require("../../models/workDiary");
 const DailyWorkLog = require("../../models/dailyWorkLog");
 
 let app;
@@ -53,7 +52,7 @@ describe("Flow: dashboard-stats Phase 11 metrics, against real seeded data", () 
     expect(res.body.data.invoiceReadyJobs).toBe(1);
   });
 
-  test("PASS: pendingPodApprovals / pendingDiaryApprovals match real pending counts, excluding approved/rejected", async () => {
+  test("PASS: pendingPodApprovals matches the real pending count, excluding approved/rejected", async () => {
     const admin = await createDriver({ role: "admin" });
     const driver = await createDriver({ role: "driver" });
 
@@ -61,14 +60,10 @@ describe("Flow: dashboard-stats Phase 11 metrics, against real seeded data", () 
     await JobPod.create({ driverId: driver._id, fileUrl: "https://example.com/b.pdf", status: "pending" });
     await JobPod.create({ driverId: driver._id, fileUrl: "https://example.com/c.pdf", status: "approved" });
 
-    await WorkDiary.create({ driverId: driver._id, fileUrl: "https://example.com/d.pdf", status: "pending" });
-    await WorkDiary.create({ driverId: driver._id, fileUrl: "https://example.com/e.pdf", status: "rejected" });
-
     const res = await request(app).get("/api/admin/dashboard-stats").set("Authorization", authHeader(admin));
 
     expect(res.status).toBe(200);
     expect(res.body.data.pendingPodApprovals).toBe(2);
-    expect(res.body.data.pendingDiaryApprovals).toBe(1);
   });
 
   test("PASS: podApprovalRate reflects real approved/rejected counts and is null with no decided PODs", async () => {

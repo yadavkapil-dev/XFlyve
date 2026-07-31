@@ -4,8 +4,7 @@ const router = express.Router();
 const authMiddleware = require("../middlewares/authMiddleware");
 const {
   requireDriver,
-  requireAdmin,
-  requireDriverOrAdmin, // import the new middleware
+  requireDriverOrAdmin,
 } = require("../middlewares/roleMiddleware");
 const upload = require("../config/multer");
 const { requirePdfSignature } = require("../middlewares/validateFileSignature");
@@ -15,30 +14,10 @@ const {
   workDiaryIdValidator,
   driverIdParamValidator,
   updateWorkDiaryNotesValidator,
-  rejectWorkDiaryValidator,
 } = require("../validators/workDiaryValidator");
 const validateRequest = require("../middlewares/validateRequest");
 
 router.use(authMiddleware);
-
-// Admin approval helpers
-router.get("/admin/pending", requireAdmin, workDiaryController.listPendingWorkDiaryApprovals);
-
-router.put(
-  "/:id/approve",
-  requireAdmin,
-  ...workDiaryIdValidator,
-  validateRequest,
-  workDiaryController.approveWorkDiary
-);
-
-router.put(
-  "/:id/reject",
-  requireAdmin,
-  ...rejectWorkDiaryValidator,
-  validateRequest,
-  workDiaryController.rejectWorkDiary
-);
 
 // Upload work diary PDF (Driver only)
 router.post(

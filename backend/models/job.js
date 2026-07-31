@@ -141,10 +141,10 @@ jobSchema.methods.hasApprovedPod = async function () {
 
 // A job is invoice-ready once its POD is approved — full stop, for both
 // local and interstate jobs. Work diaries/logs are still required for the
-// driver to submit and still go through their own approval workflow
-// (unchanged); they just no longer gate invoice-readiness. (Previously
-// interstate jobs also required an approved diary here; removed per a
-// deliberate business rule change — see Phase 16.)
+// driver to submit (neither has an approval workflow — both are just
+// submitted records); they just no longer gate invoice-readiness.
+// (Previously interstate jobs also required an approved diary here;
+// removed per a deliberate business rule change — see Phase 16.)
 //
 // job.status === "completed" is still required. Uploading/approving a POD
 // has no dependency on the linked job's status anywhere in this codebase

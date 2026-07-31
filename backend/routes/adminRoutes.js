@@ -27,6 +27,7 @@ router.get("/export-drivers", authMiddleware, requireAdmin, adminController.expo
 router.get("/stats", authMiddleware, requireAdmin, adminController.getSystemStats);
 router.get("/dashboard-stats", authMiddleware, requireAdmin, adminController.getDashboardStats);
 router.get("/download-all-pods", authMiddleware, requireAdmin, adminController.downloadAllPods);
+router.get("/download-work-diaries", authMiddleware, requireAdmin, adminController.downloadWorkDiaries);
 
 /* ==========================================================
    Demo driver route kept for compatibility, but protected.

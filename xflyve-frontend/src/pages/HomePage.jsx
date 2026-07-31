@@ -66,7 +66,6 @@ const emptyDashboard = {
   weeklyKilometres: 0,
   invoiceReadyJobs: 0,
   pendingPodApprovals: 0,
-  pendingDiaryApprovals: 0,
   podApprovalRate: null,
   truckStatusBreakdown: { available: 0, "on-route": 0, "out-of-service": 0 },
   jobsByStatus: { pending: 0, "in-progress": 0, completed: 0 },
@@ -787,15 +786,6 @@ const HomePage = () => {
                       actionLabel="Review PODs"
                       onClick={() => navigate("/pods")}
                       tone={dashboard.pendingPodApprovals > 0 ? "warning" : "success"}
-                    />
-                    <AttentionCard
-                      title="Pending Work Diary Approvals"
-                      value={dashboard.pendingDiaryApprovals}
-                      description="Interstate compliance diaries awaiting your review."
-                      icon={<DescriptionOutlinedIcon />}
-                      actionLabel="Review work diaries"
-                      onClick={() => navigate("/work-diary")}
-                      tone={dashboard.pendingDiaryApprovals > 0 ? "warning" : "success"}
                     />
                     <AttentionCard
                       title="Missing Work Logs"

@@ -204,25 +204,6 @@ describe("DriverJobs — job status actions", () => {
     expect(screen.queryByRole("button", { name: "Upload POD" })).not.toBeInTheDocument();
   });
 
-  test("PASS: a diary_approved real-time event flips the Work Diary Pages button to locked while the page is open", async () => {
-    const job = baseJob({ jobType: "interstate", status: "completed" });
-    getJobsByDriver.mockResolvedValue({ data: { data: [job] } });
-    listWorkDiariesByDriver.mockResolvedValueOnce({ data: [] });
-
-    const { rerender } = renderJobs();
-
-    expect(await screen.findByRole("button", { name: "Work Diary Pages" })).toBeInTheDocument();
-
-    listWorkDiariesByDriver.mockResolvedValueOnce({
-      data: [{ _id: "diary1", jobId: "job1", status: "approved" }],
-    });
-    useNotifications.mockReturnValue({ lastEvent: { type: "diary_approved", resourceType: "workdiary", resourceId: "diary1" } });
-    rerender(jobsTree());
-
-    expect(await screen.findByText("Work Diary Submitted ✅")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Work Diary Pages" })).not.toBeInTheDocument();
-  });
-
   test("PASS: the job detail card shows its start time", async () => {
     const job = baseJob({ startTime: "08:00" });
     getJobsByDriver.mockResolvedValue({ data: { data: [job] } });

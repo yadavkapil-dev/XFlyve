@@ -21,18 +21,12 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { useNotifications } from "../../contexts/NotificationContext";
 import {
   uploadWorkDiary,
   listWorkDiariesByDriver,
   deleteWorkDiary,
   updateWorkDiaryNotes,
 } from "../../api";
-
-// Real-time event types that mean "this page's data is now stale" — an
-// admin approving/rejecting a diary while this page is open.
-// diary_submitted isn't included: that notifies admins, not the driver.
-const RELEVANT_DIARY_EVENTS = ["diary_approved", "diary_rejected"];
 
 const palette = {
   ink: "#0b1220",
@@ -43,9 +37,6 @@ const palette = {
   heroMid: "#0b2f3a",
   heroEnd: "#0c5f5b",
   teal: "#0e7c76",
-  emerald: "#07866f",
-  amber: "#b76e00",
-  rose: "#b42318",
 };
 
 const formatDate = (value, fallback = "Not recorded") => {
@@ -69,12 +60,6 @@ const normalizeId = (value) => {
   if (!value) return "";
   if (typeof value === "object") return String(value._id || value.id || "");
   return String(value);
-};
-
-const getStatusMeta = (status = "pending") => {
-  if (status === "approved") return { label: "Approved", color: palette.emerald };
-  if (status === "rejected") return { label: "Rejected", color: palette.rose };
-  return { label: "Pending approval", color: palette.amber };
 };
 
 const toLocalDateKey = (value) => {
@@ -113,7 +98,6 @@ const WorkDiary = () => {
   const navigate = useNavigate();
   const { id: routeJobId } = useParams();
   const driverId = user?._id || user?.id;
-  const { lastEvent } = useNotifications();
 
   const [workDiaries, setWorkDiaries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,16 +128,6 @@ const WorkDiary = () => {
   useEffect(() => {
     fetchWorkDiaries();
   }, [fetchWorkDiaries]);
-
-  // Admin approves/rejects a diary while this page happens to be open —
-  // re-run the exact same fetch this page already uses on mount, so the
-  // status/lock state here never needs a manual refresh to catch up.
-  useEffect(() => {
-    if (!lastEvent) return;
-    if (RELEVANT_DIARY_EVENTS.includes(lastEvent.type)) {
-      fetchWorkDiaries();
-    }
-  }, [lastEvent, fetchWorkDiaries]);
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -198,12 +172,7 @@ const WorkDiary = () => {
       setWorkDiaries((prev) =>
         prev.map((diary) => (
           diary._id === id
-            ? {
-                ...diary,
-                notes: updated.notes,
-                status: updated.status,
-                rejectionReason: updated.rejectionReason,
-              }
+            ? { ...diary, notes: updated.notes }
             : diary
         ))
       );
@@ -294,8 +263,6 @@ const WorkDiary = () => {
                         ? job.assignedTruck
                         : null;
                     const truckLabel = truck?.truckNumber || truck?.name || "Not available";
-                    const statusMeta = getStatusMeta(diary.status);
-                    const isApproved = diary.status === "approved";
 
                     return (
                       <Paper key={diary._id} elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
@@ -323,11 +290,6 @@ const WorkDiary = () => {
                                 </Typography>
                               )}
                             </Box>
-                            <Chip
-                              size="small"
-                              label={isApproved ? "Approved by admin — locked" : statusMeta.label}
-                              sx={{ color: statusMeta.color, bgcolor: alpha(statusMeta.color, 0.1), fontWeight: 900 }}
-                            />
                           </Stack>
 
                           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
@@ -354,7 +316,7 @@ const WorkDiary = () => {
                             </Box>
                           )}
 
-                          {!isApproved && job && (
+                          {job && (
                             <Button
                               fullWidth
                               variant="outlined"
@@ -366,21 +328,19 @@ const WorkDiary = () => {
                             </Button>
                           )}
 
-                          {!isApproved && (
-                            <Stack direction="row" spacing={1} justifyContent="flex-end">
-                              {editId === diary._id ? (
-                                <>
-                                  <IconButton aria-label="save work diary notes" onClick={() => saveEdit(diary._id)}><SaveIcon /></IconButton>
-                                  <IconButton aria-label="cancel editing work diary notes" color="error" onClick={() => setEditId(null)}><CancelIcon /></IconButton>
-                                </>
-                              ) : (
-                                <>
-                                  <IconButton aria-label="edit work diary notes" onClick={() => { setEditId(diary._id); setEditNotes(diary.notes || ""); }}><EditIcon /></IconButton>
-                                  <IconButton aria-label="delete work diary" color="error" onClick={() => handleDelete(diary._id)}><DeleteIcon /></IconButton>
-                                </>
-                              )}
-                            </Stack>
-                          )}
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            {editId === diary._id ? (
+                              <>
+                                <IconButton aria-label="save work diary notes" onClick={() => saveEdit(diary._id)}><SaveIcon /></IconButton>
+                                <IconButton aria-label="cancel editing work diary notes" color="error" onClick={() => setEditId(null)}><CancelIcon /></IconButton>
+                              </>
+                            ) : (
+                              <>
+                                <IconButton aria-label="edit work diary notes" onClick={() => { setEditId(diary._id); setEditNotes(diary.notes || ""); }}><EditIcon /></IconButton>
+                                <IconButton aria-label="delete work diary" color="error" onClick={() => handleDelete(diary._id)}><DeleteIcon /></IconButton>
+                              </>
+                            )}
+                          </Stack>
                         </Stack>
                       </Paper>
                     );

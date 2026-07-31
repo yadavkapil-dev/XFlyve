@@ -29,7 +29,7 @@ const TOOL_DEFINITIONS = [
     name: "getRejectedDocuments",
     role: "admin",
     description:
-      "List rejected proof-of-delivery documents, with rejection reasons. Does not include rejected work diaries. Work logs have no rejection concept.",
+      "List rejected proof-of-delivery documents, with rejection reasons. Work diaries and work logs have no rejection concept.",
   },
   {
     name: "getInvoiceReadyJobs",

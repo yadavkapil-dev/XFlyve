@@ -19,8 +19,3 @@ exports.updateWorkDiaryNotesValidator = [
   param("id").isMongoId().withMessage("Valid Work Diary ID is required"),
   body("notes").optional().isString().withMessage("Notes must be a string"),
 ];
-
-exports.rejectWorkDiaryValidator = [
-  param("id").isMongoId().withMessage("Valid Work Diary ID is required"),
-  body("rejectionReason").trim().notEmpty().withMessage("Rejection reason is required"),
-];

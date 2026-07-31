@@ -46,15 +46,9 @@ const getPendingPods = (user) =>
 
 // GET /api/jobpods/admin/all?status=rejected (requireAdmin).
 //
-// Work logs no longer have any approval/rejection concept (a submitted log
-// is just a record), so this no longer combines in rejected work logs.
-// Deliberately does NOT include rejected work diaries: there is no existing
-// backend endpoint that returns them (workDiaryController only exposes
-// listPendingWorkDiaryApprovals, hardcoded to status:"pending" — no
-// "list all"/status-filterable route exists for work diaries the way it
-// does for PODs). Flagged to the user rather than adding a new backend
-// endpoint to fill the gap, per the "reuse existing backend logic only"
-// instruction for this phase.
+// Work logs and work diaries no longer have any approval/rejection concept
+// (a submitted one is just a record), so this can't combine in either —
+// PODs are the only document type left with a rejected state.
 const getRejectedDocuments = async (user) => {
   const pods = await runProtected([requireAdmin], jobPodController.listAllPODs, buildReq(user, { query: { status: "rejected" } }));
 

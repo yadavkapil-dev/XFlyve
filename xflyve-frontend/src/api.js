@@ -66,6 +66,10 @@ export const getDashboardStats = (date) => api.get("/admin/dashboard-stats", { p
 export const downloadAllPods = (date) =>
   api.get("/admin/download-all-pods", { params: { date }, responseType: "blob" });
 
+// dateFrom/dateTo required; driverId optional (all drivers if omitted).
+export const downloadWorkDiaries = (dateFrom, dateTo, driverId) =>
+  api.get("/admin/download-work-diaries", { params: { dateFrom, dateTo, driverId }, responseType: "blob" });
+
 // Trucks
 // params: { page, limit, sort, search, status, recordStatus }
 export const getAllTrucks = (params) => api.get("/admin/trucks", { params });
@@ -151,22 +155,6 @@ export const updateWorkDiaryNotes = async (workDiaryId, payload) => {
   // payload = { notes: "new notes text" }
   const res = await api.put(`/workDiaries/${workDiaryId}`, payload);
   return res.data.data; // return the updated work diary object
-};
-
-// params: { page, limit, sort, driverId, dateFrom, dateTo }
-export const listPendingWorkDiaries = async (params) => {
-  const res = await api.get("/workdiaries/admin/pending", { params });
-  return { data: res.data.data || [], pagination: res.data.pagination };
-};
-
-export const approveWorkDiary = async (workDiaryId) => {
-  const res = await api.put(`/workdiaries/${workDiaryId}/approve`);
-  return res.data.data;
-};
-
-export const rejectWorkDiary = async (workDiaryId, payload) => {
-  const res = await api.put(`/workdiaries/${workDiaryId}/reject`, payload);
-  return res.data.data;
 };
 
 // ===== POD =====

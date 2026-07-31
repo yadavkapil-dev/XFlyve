@@ -27,7 +27,7 @@ const loadController = () => {
     aggregate: jest.fn().mockResolvedValue([]),
   };
   const JobPod = { aggregate: jest.fn().mockResolvedValue([]) };
-  const WorkDiary = { countDocuments: jest.fn().mockResolvedValue(0) };
+  const WorkDiary = {};
 
   jest.doMock("../models/driver", () => Driver);
   jest.doMock("../models/job", () => Job);
@@ -37,14 +37,14 @@ const loadController = () => {
   jest.doMock("../models/workDiary", () => WorkDiary);
   jest.doMock("../utils/logger", () => ({ error: jest.fn(), info: jest.fn(), warn: jest.fn() }));
 
-  return { controller: require("../controllers/adminController"), Driver, Job, Truck, DailyWorkLog, JobPod, WorkDiary };
+  return { controller: require("../controllers/adminController"), Driver, Job, Truck, DailyWorkLog, JobPod };
 };
 
 describe("GET /api/admin/dashboard-stats", () => {
   afterEach(() => jest.restoreAllMocks());
 
   test("returns all the metrics HomePage.jsx displays, computed for the given date", async () => {
-    const { controller, Driver, Job, Truck, DailyWorkLog, JobPod, WorkDiary } = loadController();
+    const { controller, Driver, Job, Truck, DailyWorkLog, JobPod } = loadController();
 
     // 1st Job.aggregate call: jobStatusToday. 2nd: jobsByStatus (all jobs,
     // any date). 3rd: jobVolumeTrend.
@@ -75,7 +75,6 @@ describe("GET /api/admin/dashboard-stats", () => {
       { _id: "rejected", count: 3 },
       { _id: "pending", count: 2 },
     ]);
-    WorkDiary.countDocuments.mockResolvedValueOnce(4);
 
     const req = { query: { date: "2026-07-20" } };
     const res = makeResponse();
@@ -97,7 +96,6 @@ describe("GET /api/admin/dashboard-stats", () => {
         weeklyKilometres: 3400,
         invoiceReadyJobs: 2,
         pendingPodApprovals: 2,
-        pendingDiaryApprovals: 4,
         podApprovalRate: 70, // 7 approved / (7 approved + 3 rejected) = 70%
         truckStatusBreakdown: { available: 4, "on-route": 2, "out-of-service": 1 },
         jobsByStatus: { pending: 5, "in-progress": 2, completed: 20 },

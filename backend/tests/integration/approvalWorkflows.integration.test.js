@@ -160,7 +160,7 @@ describe("Flow: POD workflow", () => {
 });
 
 describe("Flow: Diary workflow", () => {
-  test("PASS: driver uploads a work diary for an interstate job -> admin approves it", async () => {
+  test("PASS: driver uploads a work diary for an interstate job -> admins are notified, and it's always editable (no approval workflow)", async () => {
     const admin = await createDriver({ role: "admin" });
     const driver = await createDriver({ role: "driver" });
     const truck = await createTruck();
@@ -178,48 +178,18 @@ describe("Flow: Diary workflow", () => {
     const submittedNotif = await Notification.findOne({ recipient: admin._id, type: "diary_submitted" }).lean();
     expect(submittedNotif).toBeTruthy();
 
-    const approveRes = await request(app)
-      .put(`/api/workdiaries/${diaryId}/approve`)
-      .set("Authorization", authHeader(admin));
-
-    expect(approveRes.status).toBe(200);
-    expect(approveRes.body.data.status).toBe("approved");
-
-    const persisted = await WorkDiary.findById(diaryId).lean();
-    expect(persisted.status).toBe("approved");
-
-    const activity = await Activity.findOne({ action: "DIARY_APPROVED", resourceId: diaryId }).lean();
+    const activity = await Activity.findOne({ action: "DIARY_SUBMITTED", resourceId: diaryId }).lean();
     expect(activity).toBeTruthy();
     expect(String(activity.relatedJobId)).toBe(String(job._id));
-  });
 
-  test("PASS: admin rejects a work diary; driver locked from re-approving it themselves, can resubmit by editing", async () => {
-    const admin = await createDriver({ role: "admin" });
-    const driver = await createDriver({ role: "driver" });
-    const job = await createJob({ assignedTo: driver, jobType: "interstate" });
-
-    const uploadRes = await request(app)
-      .post("/api/workDiaries/upload")
-      .set("Authorization", authHeader(driver))
-      .field("jobId", job._id.toString())
-      .attach("workDiaryFile", fakePdf(), { filename: "diary.pdf", contentType: "application/pdf" });
-    const diaryId = uploadRes.body.data._id;
-
-    const rejectRes = await request(app)
-      .put(`/api/workdiaries/${diaryId}/reject`)
-      .set("Authorization", authHeader(admin))
-      .send({ rejectionReason: "Missing signature page" });
-    expect(rejectRes.status).toBe(200);
-
-    // Driver edits the rejected diary -> implicit resubmission back to pending.
+    // No lock of any kind — the driver can edit their own just-uploaded diary.
     const editRes = await request(app)
       .put(`/api/workDiaries/${diaryId}`)
       .set("Authorization", authHeader(driver))
-      .send({ notes: "Added the missing page" });
+      .send({ notes: "Added a note" });
 
     expect(editRes.status).toBe(200);
-    expect(editRes.body.data.status).toBe("pending");
-    expect(editRes.body.data.rejectionReason).toBeUndefined();
+    expect(editRes.body.data.notes).toBe("Added a note");
   });
 
   test("PASS: a work diary upload with a spoofed PDF mimetype but non-PDF bytes is rejected (400)", async () => {

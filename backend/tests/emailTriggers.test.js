@@ -198,11 +198,12 @@ describe("Email trigger: job assigned (jobController)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// jobPodController / workDiaryController / workLogController:
-// reject -> sendDocumentRejectedEmail (alongside notifyUser's *_rejected
-// notification, not instead of it)
+// jobPodController: reject -> sendDocumentRejectedEmail (alongside
+// notifyUser's pod_rejected notification, not instead of it). Work diaries
+// and work logs have no rejection concept anymore, so PODs are the only
+// document type left with this trigger.
 // ---------------------------------------------------------------------------
-describe("Email trigger: document rejected (POD / work diary / work log)", () => {
+describe("Email trigger: document rejected (POD)", () => {
   const loadPodController = () => {
     jest.resetModules();
 
@@ -223,28 +224,6 @@ describe("Email trigger: document rejected (POD / work diary / work log)", () =>
     jest.doMock("../services/emailService", () => emailService);
 
     return { controller: require("../controllers/jobPodController"), JobPod, Driver, notificationService, emailService };
-  };
-
-  const loadDiaryController = () => {
-    jest.resetModules();
-
-    const WorkDiary = jest.fn().mockImplementation((data) => ({ ...data, _id: "diary-1", save: jest.fn().mockResolvedValue(undefined) }));
-    WorkDiary.findById = jest.fn();
-    const Job = { findById: jest.fn(), updateOne: jest.fn() };
-    const Driver = { findById: jest.fn() };
-    const notificationService = notificationServiceMock();
-    const activityService = activityServiceMock();
-    const emailService = emailServiceMock();
-
-    jest.doMock("../models/workDiary", () => WorkDiary);
-    jest.doMock("../models/job", () => Job);
-    jest.doMock("../models/driver", () => Driver);
-    jest.doMock("../utils/logger", () => ({ error: jest.fn(), warn: jest.fn() }));
-    jest.doMock("../services/notificationService", () => notificationService);
-    jest.doMock("../services/activityService", () => activityService);
-    jest.doMock("../services/emailService", () => emailService);
-
-    return { controller: require("../controllers/workDiaryController"), WorkDiary, Driver, notificationService, emailService };
   };
 
   afterEach(() => jest.restoreAllMocks());
@@ -269,25 +248,6 @@ describe("Email trigger: document rejected (POD / work diary / work log)", () =>
     expect(notificationService.notifyUser).toHaveBeenCalledWith(
       expect.objectContaining({ recipient: driverId, type: "pod_rejected" })
     );
-  });
-
-  test("rejectWorkDiary sends a document-rejected email (documentType 'diary') with the rejection reason", async () => {
-    const { controller, WorkDiary, Driver, emailService } = loadDiaryController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const diaryId = new mongoose.Types.ObjectId().toString();
-    const diary = { _id: diaryId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    WorkDiary.findById.mockResolvedValueOnce(diary);
-    Driver.findById.mockReturnValueOnce(selectLeanResult({ email: "driver2@example.com" }));
-
-    const req = { params: { id: diaryId }, body: { rejectionReason: "missing pages" }, user: { id: "admin-1", role: "admin" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkDiary(req, res);
-
-    expect(emailService.sendDocumentRejectedEmail).toHaveBeenCalledWith("driver2@example.com", {
-      documentType: "diary",
-      reason: "missing pages",
-    });
   });
 
   test("rejectPOD still responds 200 and the rejection still persists even if the driver-email lookup fails", async () => {

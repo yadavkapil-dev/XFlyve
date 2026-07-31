@@ -398,19 +398,17 @@ describe("Activity: POD upload/approve/reject", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workDiaryController: DIARY_SUBMITTED / DIARY_APPROVED / DIARY_REJECTED
+// workDiaryController: DIARY_SUBMITTED
 // ---------------------------------------------------------------------------
-describe("Activity: work diary upload/approve/reject", () => {
+describe("Activity: work diary upload", () => {
   const loadController = () => {
     jest.resetModules();
 
     const WorkDiary = jest.fn().mockImplementation((data) => ({
       ...data,
       _id: "diary-1",
-      status: "pending",
       save: jest.fn().mockResolvedValue(undefined),
     }));
-    WorkDiary.findById = jest.fn();
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
@@ -451,56 +449,6 @@ describe("Activity: work diary upload/approve/reject", () => {
     );
   });
 
-  test("approveWorkDiary logs DIARY_APPROVED, actor = admin, resource = the diary", async () => {
-    const { controller, WorkDiary, activityService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const diaryId = new mongoose.Types.ObjectId().toString();
-    const jobId = new mongoose.Types.ObjectId().toString();
-    const adminId = new mongoose.Types.ObjectId().toString();
-    const diary = { _id: diaryId, driverId, jobId, status: "pending", save: jest.fn().mockResolvedValue(undefined) };
-    WorkDiary.findById.mockResolvedValueOnce(diary);
-
-    const req = { params: { id: diaryId }, user: { id: adminId, role: "admin" } };
-    const res = makeResponse();
-
-    await controller.approveWorkDiary(req, res);
-
-    expect(activityService.logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorId: adminId,
-        actorRole: "admin",
-        action: "DIARY_APPROVED",
-        resourceType: "workdiary",
-        resourceId: diaryId,
-        relatedJobId: jobId,
-      })
-    );
-  });
-
-  test("rejectWorkDiary logs DIARY_REJECTED with the rejection reason in metadata", async () => {
-    const { controller, WorkDiary, activityService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const diaryId = new mongoose.Types.ObjectId().toString();
-    const adminId = new mongoose.Types.ObjectId().toString();
-    const diary = { _id: diaryId, driverId, jobId: null, status: "pending", save: jest.fn().mockResolvedValue(undefined) };
-    WorkDiary.findById.mockResolvedValueOnce(diary);
-
-    const req = { params: { id: diaryId }, body: { rejectionReason: "missing pages" }, user: { id: adminId, role: "admin" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkDiary(req, res);
-
-    expect(activityService.logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorId: adminId,
-        actorRole: "admin",
-        action: "DIARY_REJECTED",
-        resourceType: "workdiary",
-        resourceId: diaryId,
-        metadata: { rejectionReason: "missing pages" },
-      })
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------

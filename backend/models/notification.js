@@ -9,8 +9,6 @@ const NOTIFICATION_TYPES = [
   "pod_approved",
   "pod_rejected",
   "diary_submitted",
-  "diary_approved",
-  "diary_rejected",
   "worklog_submitted",
 ];
 

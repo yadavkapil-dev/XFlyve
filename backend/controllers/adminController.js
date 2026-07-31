@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Driver = require("../models/driver");
 const Job = require("../models/job");
 const Truck = require("../models/truck");
@@ -188,7 +189,6 @@ exports.getDashboardStats = async (req, res) => {
       jobsByStatusAgg,
       jobVolumeAgg,
       podStatusAgg,
-      pendingDiaryApprovals,
       invoiceReadyJobs,
     ] = await Promise.all([
       Job.aggregate([
@@ -229,7 +229,6 @@ exports.getDashboardStats = async (req, res) => {
       JobPod.aggregate([
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
-      WorkDiary.countDocuments({ status: "pending" }),
       // Reuses the exact same business rule the real "ready to invoice" list
       // uses (Job.findReadyForInvoicing, unit-tested in Phase 7A) rather
       // than re-deriving local/interstate/POD/diary eligibility here a
@@ -289,7 +288,6 @@ exports.getDashboardStats = async (req, res) => {
         weeklyKilometres: weekly.kilometers || 0,
         invoiceReadyJobs: invoiceReadyJobs.length,
         pendingPodApprovals: podCounts.pending || 0,
-        pendingDiaryApprovals,
         podApprovalRate,
         truckStatusBreakdown,
         jobsByStatus,
@@ -347,6 +345,68 @@ exports.downloadAllPods = async (req, res) => {
     logger.error("Failed to download all PODs: %o", err);
     if (!res.headersSent) {
       res.status(500).json({ status: "error", message: "Server error generating PODs ZIP" });
+    }
+  }
+};
+
+// GET /api/admin/download-work-diaries?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&driverId=
+// Unlike downloadAllPods (single day, "today unless picked"), the real use
+// case here is an NHVR records request — "this driver's diary pages from
+// date X to date Y" — so both bounds are required rather than defaulted,
+// and driverId is optional (omit it for every driver in range). Scoped on
+// uploadDate, matching the field the rest of the Work Diary page already
+// filters/sorts on. Work diaries have no approval status to scope by (see
+// the Work Diary business-logic simplification) — every uploaded diary in
+// range is included.
+exports.downloadWorkDiaries = async (req, res) => {
+  try {
+    const { dateFrom, dateTo, driverId } = req.query;
+
+    if (!dateFrom || !dateTo) {
+      return res.status(400).json({ status: "fail", message: "dateFrom and dateTo are both required" });
+    }
+
+    const dateFilter = buildDateRangeFilter("uploadDate", { from: dateFrom, to: dateTo });
+    if (!dateFilter) {
+      return res.status(400).json({ status: "fail", message: "Invalid dateFrom/dateTo" });
+    }
+
+    const query = { fileUrl: { $exists: true, $ne: null }, ...dateFilter };
+    if (driverId && mongoose.Types.ObjectId.isValid(driverId)) {
+      query.driverId = driverId;
+    }
+
+    const diaries = await WorkDiary.find(query)
+      .select("fileUrl driverId uploadDate createdAt")
+      .populate("driverId", "name")
+      .lean();
+
+    if (diaries.length === 0) {
+      return res.status(404).json({ status: "fail", message: "No work diary files found for that range" });
+    }
+
+    const usedNames = new Set();
+    const files = diaries.map((diary) => {
+      const driverName = (diary.driverId?.name || "driver").trim().replace(/[^a-z0-9]+/gi, "_");
+      const dateStr = new Date(diary.uploadDate || diary.createdAt || 0).toISOString().slice(0, 10);
+      const baseName = `WorkDiary-${driverName}-${dateStr}`;
+
+      let name = `${baseName}.pdf`;
+      let suffix = 1;
+      while (usedNames.has(name)) {
+        name = `${baseName}-${suffix++}.pdf`;
+      }
+      usedNames.add(name);
+
+      return { url: diary.fileUrl, name };
+    });
+
+    logger.info(`Zipping ${files.length} work diary files`);
+    await generateZip(files, `work_diaries_${dateFrom}_to_${dateTo}.zip`, res);
+  } catch (err) {
+    logger.error("Failed to download work diaries: %o", err);
+    if (!res.headersSent) {
+      res.status(500).json({ status: "error", message: "Server error generating work diaries ZIP" });
     }
   }
 };

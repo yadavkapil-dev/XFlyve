@@ -220,7 +220,7 @@ const openApiSpec = {
             enum: [
               "job_assigned", "job_updated", "job_started", "job_completed",
               "pod_submitted", "pod_approved", "pod_rejected",
-              "diary_submitted", "diary_approved", "diary_rejected",
+              "diary_submitted",
               "worklog_submitted",
             ],
             example: "job_assigned",

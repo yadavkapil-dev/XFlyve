@@ -311,9 +311,9 @@ describe("Trigger: POD upload/approve/reject", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workDiaryController: upload -> notifyAdmins, approve/reject -> notifyUser
+// workDiaryController: upload -> notifyAdmins
 // ---------------------------------------------------------------------------
-describe("Trigger: work diary upload/approve/reject", () => {
+describe("Trigger: work diary upload", () => {
   const loadController = () => {
     jest.resetModules();
 
@@ -322,7 +322,6 @@ describe("Trigger: work diary upload/approve/reject", () => {
       _id: "diary-1",
       save: jest.fn().mockResolvedValue(undefined),
     }));
-    WorkDiary.findById = jest.fn();
     const Job = { findById: jest.fn(), updateOne: jest.fn() };
     const notificationService = notificationServiceMock();
     const activityService = activityServiceMock();
@@ -356,39 +355,6 @@ describe("Trigger: work diary upload/approve/reject", () => {
     );
   });
 
-  test("approveWorkDiary notifies the diary's driver with type diary_approved", async () => {
-    const { controller, WorkDiary, notificationService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const diaryId = new mongoose.Types.ObjectId().toString();
-    const diary = { _id: diaryId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    WorkDiary.findById.mockResolvedValueOnce(diary);
-
-    const req = { params: { id: diaryId }, user: { id: "admin-1" } };
-    const res = makeResponse();
-
-    await controller.approveWorkDiary(req, res);
-
-    expect(notificationService.notifyUser).toHaveBeenCalledWith(
-      expect.objectContaining({ recipient: driverId, type: "diary_approved", resourceType: "workdiary", resourceId: diaryId })
-    );
-  });
-
-  test("rejectWorkDiary notifies the diary's driver with type diary_rejected", async () => {
-    const { controller, WorkDiary, notificationService } = loadController();
-    const driverId = new mongoose.Types.ObjectId().toString();
-    const diaryId = new mongoose.Types.ObjectId().toString();
-    const diary = { _id: diaryId, driverId, save: jest.fn().mockResolvedValue(undefined) };
-    WorkDiary.findById.mockResolvedValueOnce(diary);
-
-    const req = { params: { id: diaryId }, body: { rejectionReason: "missing pages" }, user: { id: "admin-1" } };
-    const res = makeResponse();
-
-    await controller.rejectWorkDiary(req, res);
-
-    expect(notificationService.notifyUser).toHaveBeenCalledWith(
-      expect.objectContaining({ recipient: driverId, type: "diary_rejected", resourceType: "workdiary", resourceId: diaryId })
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------

@@ -89,10 +89,12 @@ const getLatestForJob = (records, jobId) => {
     )[0] || null;
 };
 
-// Real-time event types that mean "this page's POD/diary state is now
-// stale" — an admin approving/rejecting either while this page is open.
-// *_submitted isn't included: those notify admins, not the driver.
-const RELEVANT_EVENTS = ["pod_approved", "pod_rejected", "diary_approved", "diary_rejected"];
+// Real-time event types that mean "this page's POD state is now stale" —
+// an admin approving/rejecting a POD while this page is open. Work diaries
+// have no approval workflow (nothing ever emits diary_approved/rejected),
+// so there's nothing diary-related to listen for here. pod_submitted isn't
+// included: that notifies admins, not the driver.
+const RELEVANT_EVENTS = ["pod_approved", "pod_rejected"];
 
 const DetailItem = ({ icon, label, value }) => (
   <Paper

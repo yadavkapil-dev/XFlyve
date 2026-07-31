@@ -14,10 +14,33 @@ const { logActivity } = require("../services/activityService");
 const DIARY_HISTORY_DAYS = 30;
 const DIARY_SORT_FIELDS = ["uploadDate", "createdAt", "workDate"];
 
-// uploadDate-range filter — safe on every diary list endpoint.
+// Date-range filter scoped on workDate (the day the diary is actually for),
+// falling back to uploadDate only for legacy records with no workDate at
+// all — a diary uploaded late for an earlier trip must still match a
+// range request for the trip's own date, not the day it was uploaded.
+// Safe on every diary list endpoint. Combines with any existing top-level
+// $or on `query` (e.g. listWorkDiariesByDriver's own includeOlder cutoff)
+// via $and, rather than overwriting it — MongoDB only allows one $or key
+// per query object.
 const applyDiaryDateFilter = (query, reqQuery) => {
-  const dateFilter = buildDateRangeFilter("uploadDate", { from: reqQuery.dateFrom, to: reqQuery.dateTo });
-  if (dateFilter) Object.assign(query, dateFilter);
+  const workDateRange = buildDateRangeFilter("workDate", { from: reqQuery.dateFrom, to: reqQuery.dateTo });
+  if (!workDateRange) return query;
+
+  const uploadDateRange = buildDateRangeFilter("uploadDate", { from: reqQuery.dateFrom, to: reqQuery.dateTo });
+  const dateOr = {
+    $or: [
+      workDateRange,
+      { workDate: null, ...uploadDateRange },
+    ],
+  };
+
+  if (query.$or) {
+    query.$and = [...(query.$and || []), { $or: query.$or }, dateOr];
+    delete query.$or;
+  } else {
+    Object.assign(query, dateOr);
+  }
+
   return query;
 };
 
@@ -191,7 +214,8 @@ exports.getWorkDiary = async (req, res) => {
 /**
  * List all work diaries for a driver — paginated, filterable.
  * Query params: page, limit, sort (uploadDate|createdAt|workDate), status,
- * dateFrom/dateTo (uploadDate range), includeOlder.
+ * dateFrom/dateTo (workDate range, falling back to uploadDate for legacy
+ * records with no workDate), includeOlder.
  */
 exports.listWorkDiariesByDriver = async (req, res) => {
   try {

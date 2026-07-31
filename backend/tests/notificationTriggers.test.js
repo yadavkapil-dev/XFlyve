@@ -78,7 +78,13 @@ describe("Trigger: job start/complete -> notifyAdmins (jobTransitionService)", (
     await service.startJob(jobDoc);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "job_started", resourceType: "job", resourceId: jobId, relatedJobId: jobId })
+      expect.objectContaining({
+        type: "job_started",
+        resourceType: "job",
+        resourceId: jobId,
+        relatedJobId: jobId,
+        message: "Test Driver started Run 1.",
+      })
     );
   });
 
@@ -95,7 +101,13 @@ describe("Trigger: job start/complete -> notifyAdmins (jobTransitionService)", (
     await service.completeJob(jobDoc);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "job_completed", resourceType: "job", resourceId: jobId, relatedJobId: jobId })
+      expect.objectContaining({
+        type: "job_completed",
+        resourceType: "job",
+        resourceId: jobId,
+        relatedJobId: jobId,
+        message: "Test Driver completed Run 2.",
+      })
     );
   });
 });
@@ -279,7 +291,13 @@ describe("Trigger: POD upload/approve/reject", () => {
     await controller.uploadPOD(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "pod_submitted", resourceType: "jobpod", resourceId: "pod-1", relatedJobId: null })
+      expect.objectContaining({
+        type: "pod_submitted",
+        resourceType: "jobpod",
+        resourceId: "pod-1",
+        relatedJobId: null,
+        message: "Test Driver uploaded a new POD for review.",
+      })
     );
   });
 
@@ -299,7 +317,11 @@ describe("Trigger: POD upload/approve/reject", () => {
     await controller.uploadPOD(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "pod_submitted", relatedJobId: jobId })
+      expect.objectContaining({
+        type: "pod_submitted",
+        relatedJobId: jobId,
+        message: "Test Driver uploaded a POD for Britztanz.",
+      })
     );
   });
 
@@ -316,7 +338,32 @@ describe("Trigger: POD upload/approve/reject", () => {
     await controller.approvePOD(req, res);
 
     expect(notificationService.notifyUser).toHaveBeenCalledWith(
-      expect.objectContaining({ recipient: driverId, type: "pod_approved", resourceType: "jobpod", resourceId: podId })
+      expect.objectContaining({
+        recipient: driverId,
+        type: "pod_approved",
+        resourceType: "jobpod",
+        resourceId: podId,
+        message: "Your proof of delivery has been approved.",
+      })
+    );
+  });
+
+  test("approvePOD linked to a job includes that job's title in the message", async () => {
+    const { controller, JobPod, Job, notificationService } = loadController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const podId = new mongoose.Types.ObjectId().toString();
+    const jobId = new mongoose.Types.ObjectId().toString();
+    const pod = { _id: podId, driverId, jobId, save: jest.fn().mockResolvedValue(undefined) };
+    JobPod.findById.mockResolvedValueOnce(pod);
+    Job.findById.mockReturnValueOnce({ select: jest.fn().mockReturnValue(leanResult({ title: "Britztanz" })) });
+
+    const req = { params: { podId }, user: { id: "admin-1" } };
+    const res = makeResponse();
+
+    await controller.approvePOD(req, res);
+
+    expect(notificationService.notifyUser).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Your POD for Britztanz has been approved." })
     );
   });
 
@@ -333,7 +380,13 @@ describe("Trigger: POD upload/approve/reject", () => {
     await controller.rejectPOD(req, res);
 
     expect(notificationService.notifyUser).toHaveBeenCalledWith(
-      expect.objectContaining({ recipient: driverId, type: "pod_rejected", resourceType: "jobpod", resourceId: podId })
+      expect.objectContaining({
+        recipient: driverId,
+        type: "pod_rejected",
+        resourceType: "jobpod",
+        resourceId: podId,
+        message: "Your proof of delivery was rejected: blurry photo",
+      })
     );
   });
 });
@@ -381,7 +434,33 @@ describe("Trigger: work diary upload", () => {
     await controller.uploadWorkDiary(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "diary_submitted", resourceType: "workdiary", resourceId: "diary-1", relatedJobId: null })
+      expect.objectContaining({
+        type: "diary_submitted",
+        resourceType: "workdiary",
+        resourceId: "diary-1",
+        relatedJobId: null,
+        message: "Test Driver uploaded a new work diary for review.",
+      })
+    );
+  });
+
+  test("uploadWorkDiary linked to an interstate job includes that job's title in the message", async () => {
+    const { controller, Job, notificationService } = loadController();
+    const driverId = new mongoose.Types.ObjectId().toString();
+    const jobId = new mongoose.Types.ObjectId().toString();
+    Job.findById.mockResolvedValueOnce({ _id: jobId, title: "Britztanz", assignedTo: driverId, jobType: "interstate" });
+
+    const req = {
+      file: { buffer: Buffer.from("pdf") },
+      body: { notes: "note", jobId },
+      user: { id: driverId },
+    };
+    const res = makeResponse();
+
+    await controller.uploadWorkDiary(req, res);
+
+    expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
+      expect.objectContaining({ relatedJobId: jobId, message: "Test Driver uploaded a work diary for Britztanz." })
     );
   });
 
@@ -419,7 +498,11 @@ describe("Trigger: work log create", () => {
   test("createWorkLog notifies admins with type worklog_submitted", async () => {
     const { controller, Job, notificationService } = loadController();
     const jobId = new mongoose.Types.ObjectId().toString();
-    Job.findOne.mockReturnValueOnce(leanResult({ _id: jobId, jobType: "local" }));
+    // Real jobs always have a title (schema-required) — every work log is
+    // job-linked too (validateAndBuildWorkLogFields requires a job), so the
+    // "no job title" fallback branch in the controller's message can never
+    // actually fire in production; this fixture reflects that reality.
+    Job.findOne.mockReturnValueOnce(leanResult({ _id: jobId, jobType: "local", title: "Britztanz" }));
 
     const req = {
       user: { id: new mongoose.Types.ObjectId().toString(), role: "driver" },
@@ -437,7 +520,13 @@ describe("Trigger: work log create", () => {
     await controller.createWorkLog(req, res);
 
     expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "worklog_submitted", resourceType: "worklog", resourceId: "log-1", relatedJobId: jobId })
+      expect.objectContaining({
+        type: "worklog_submitted",
+        resourceType: "worklog",
+        resourceId: "log-1",
+        relatedJobId: jobId,
+        message: "Test Driver submitted a work log for Britztanz.",
+      })
     );
   });
 

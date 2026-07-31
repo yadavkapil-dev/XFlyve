@@ -203,6 +203,25 @@ describe("admin PodsList — driver history section", () => {
     expect(screen.queryByText("All Statuses")).not.toBeInTheDocument();
   });
 
+  test("PASS: an archived driver still appears in the dropdown, visibly marked '(archived)' — NHVR requests can name someone who's since left", async () => {
+    vi.clearAllMocks();
+    getAllDrivers.mockReset();
+    listPendingPods.mockResolvedValue({ data: [], pagination: null });
+    listPodsByDriver.mockResolvedValue({ data: [], pagination: null });
+    getAllDrivers
+      .mockResolvedValueOnce({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } })
+      .mockResolvedValue({
+        data: { status: "success", data: [{ _id: "driver2", name: "Departed Driver", recordStatus: "archived" }] },
+      });
+
+    render(<PodsList />);
+    await screen.findByText("No PODs waiting for approval.");
+
+    await userEvent.click(screen.getByLabelText("Select Driver"));
+    expect(await screen.findByRole("option", { name: "Jane Driver" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Departed Driver (archived)" })).toBeInTheDocument();
+  });
+
   test("PASS: history records only show Download and Delete — no Approve/Reject", async () => {
     listPodsByDriver.mockResolvedValue({ data: [historyPod()], pagination: { page: 1, limit: 20, total: 1, totalPages: 1 } });
     render(<PodsList />);

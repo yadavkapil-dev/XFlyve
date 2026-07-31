@@ -86,6 +86,30 @@ describe("admin WorkDiary — driver history section", () => {
     expect(screen.queryByRole("option", { name: /jane@example\.com/ })).not.toBeInTheDocument();
   });
 
+  test("PASS: an archived driver still appears in both driver dropdowns, visibly marked '(archived)' — NHVR requests can name someone who's since left", async () => {
+    vi.clearAllMocks();
+    getAllDrivers.mockReset();
+    listWorkDiariesByDriver.mockResolvedValue({ data: [], pagination: null });
+    getAllDrivers
+      .mockResolvedValueOnce({ data: { status: "success", data: [{ _id: "driver1", name: "Jane Driver", email: "jane@example.com" }] } })
+      .mockResolvedValue({
+        data: { status: "success", data: [{ _id: "driver2", name: "Departed Driver", recordStatus: "archived" }] },
+      });
+
+    render(<WorkDiary />);
+    await screen.findByText("Select a driver");
+
+    // The history filter's "Select Driver".
+    await userEvent.click(screen.getByLabelText("Select Driver"));
+    expect(await screen.findByRole("option", { name: "Jane Driver" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Departed Driver (archived)" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Jane Driver" }));
+
+    // The date-range download's own "Driver" select.
+    await userEvent.click(screen.getByLabelText("Driver"));
+    expect(await screen.findByRole("option", { name: "Departed Driver (archived)" })).toBeInTheDocument();
+  });
+
   test("PASS: selecting a driver shows Date From/To but no Status filter", async () => {
     listWorkDiariesByDriver.mockResolvedValue({ data: [historyDiary()], pagination: { page: 1, limit: 20, total: 1, totalPages: 1 } });
     render(<WorkDiary />);

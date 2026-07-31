@@ -352,10 +352,13 @@ exports.downloadAllPods = async (req, res) => {
 // case here is an NHVR records request — "this driver's diary pages from
 // date X to date Y" — so both bounds are required rather than defaulted,
 // and driverId is optional (omit it for every driver in range). Scoped on
-// uploadDate, matching the field the rest of the Work Diary page already
-// filters/sorts on. Work diaries have no approval status to scope by (see
-// the Work Diary business-logic simplification) — every uploaded diary in
-// range is included.
+// workDate (the day the diary is actually FOR), not uploadDate (when the
+// driver got around to uploading it) — a diary uploaded Wednesday for a
+// Monday trip must still show up in a "records from Monday" request.
+// Falls back to uploadDate only for legacy records with no workDate at all
+// (workDate was added after uploadDate already existed). Work diaries have
+// no approval status to scope by (see the Work Diary business-logic
+// simplification) — every diary in range is included.
 exports.downloadWorkDiaries = async (req, res) => {
   try {
     const { dateFrom, dateTo, driverId } = req.query;
@@ -364,18 +367,25 @@ exports.downloadWorkDiaries = async (req, res) => {
       return res.status(400).json({ status: "fail", message: "dateFrom and dateTo are both required" });
     }
 
-    const dateFilter = buildDateRangeFilter("uploadDate", { from: dateFrom, to: dateTo });
-    if (!dateFilter) {
+    const workDateRange = buildDateRangeFilter("workDate", { from: dateFrom, to: dateTo });
+    const uploadDateRange = buildDateRangeFilter("uploadDate", { from: dateFrom, to: dateTo });
+    if (!workDateRange || !uploadDateRange) {
       return res.status(400).json({ status: "fail", message: "Invalid dateFrom/dateTo" });
     }
 
-    const query = { fileUrl: { $exists: true, $ne: null }, ...dateFilter };
+    const query = {
+      fileUrl: { $exists: true, $ne: null },
+      $or: [
+        workDateRange,
+        { workDate: null, ...uploadDateRange },
+      ],
+    };
     if (driverId && mongoose.Types.ObjectId.isValid(driverId)) {
       query.driverId = driverId;
     }
 
     const diaries = await WorkDiary.find(query)
-      .select("fileUrl driverId uploadDate createdAt")
+      .select("fileUrl driverId workDate uploadDate createdAt")
       .populate("driverId", "name")
       .lean();
 
@@ -386,7 +396,9 @@ exports.downloadWorkDiaries = async (req, res) => {
     const usedNames = new Set();
     const files = diaries.map((diary) => {
       const driverName = (diary.driverId?.name || "driver").trim().replace(/[^a-z0-9]+/gi, "_");
-      const dateStr = new Date(diary.uploadDate || diary.createdAt || 0).toISOString().slice(0, 10);
+      // Label the file with the day it's actually for, not the (possibly
+      // later) upload day — same reasoning as the query above.
+      const dateStr = new Date(diary.workDate || diary.uploadDate || diary.createdAt || 0).toISOString().slice(0, 10);
       const baseName = `WorkDiary-${driverName}-${dateStr}`;
 
       let name = `${baseName}.pdf`;

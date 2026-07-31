@@ -201,3 +201,27 @@ describe("NotificationBell — grouping by relatedJobId", () => {
     expect(groupIdx).toBeLessThan(oldestIdx);
   });
 });
+
+describe("NotificationBell — scroll container (regression: panel used to clip instead of scroll)", () => {
+  test("PASS: the header/divider don't scroll, but the notification list is a flex-growing overflow-y:auto region", async () => {
+    const markOneRead = vi.fn();
+    const markAllRead = vi.fn();
+    useNotifications.mockReturnValue({ notifications: [baseNotification()], unreadCount: 1, markOneRead, markAllRead });
+    render(<NotificationBell />);
+
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const menu = document.querySelector("ul[role='menu']");
+    const [header, divider, list] = Array.from(menu.children);
+
+    // Regression guard for the "stuck panel" bug: the fix relies on the
+    // header/divider staying fixed-size (flexGrow: 0) while only the list
+    // region grows and scrolls (flexGrow: 1, overflowY: auto). If someone
+    // reintroduces `overflow: hidden` on the outer Paper without this inner
+    // scroll region, this is what would silently break.
+    expect(getComputedStyle(header).flexGrow).toBe("0");
+    expect(getComputedStyle(divider).flexGrow).toBe("0");
+    expect(getComputedStyle(list).flexGrow).toBe("1");
+    expect(getComputedStyle(list).overflowY).toBe("auto");
+  });
+});

@@ -77,7 +77,7 @@ module.exports = {
     get: {
       tags: ["Work Diaries"],
       summary: "Download a date-range batch of work diary files as a ZIP (admin only)",
-      description: "For NHVR compliance requests — \"this driver's diary pages from date X to date Y\". Unlike the single-day POD bulk download, dateFrom and dateTo are both required (no default). driverId is optional — every driver's diaries in range are included when omitted. Scoped on uploadDate. Work diaries have no approval status, so every uploaded file in range is included.",
+      description: "For NHVR compliance requests — \"this driver's diary pages from date X to date Y\". Unlike the single-day POD bulk download, dateFrom and dateTo are both required (no default). driverId is optional — every driver's diaries in range are included when omitted. Scoped on workDate (the day the diary is actually for), falling back to uploadDate only for legacy records with no workDate. Work diaries have no approval status, so every diary in range is included.",
       security: h.bearer,
       parameters: [
         { name: "dateFrom", in: "query", required: true, schema: { type: "string", format: "date" }, example: "2026-07-01" },
@@ -103,7 +103,7 @@ module.exports = {
       parameters: [
         { name: "driverId", in: "path", required: true, schema: { type: "string" }, example: FAKE_DRIVER_ID },
         h.pageParam, h.limitParam, h.sortParam(["uploadDate", "createdAt", "workDate"], "uploadDate"),
-        h.dateFromParam("uploadDate"), h.dateToParam("uploadDate"),
+        h.dateFromParam("workDate (falls back to uploadDate for legacy records with no workDate)"), h.dateToParam("workDate (falls back to uploadDate for legacy records with no workDate)"),
         { name: "includeOlder", in: "query", schema: { type: "string", enum: ["true", "false"] } },
       ],
       responses: {

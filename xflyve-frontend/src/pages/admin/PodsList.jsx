@@ -439,14 +439,8 @@ const AdminPODs = () => {
       borderRadius: 2,
       minWidth: { sm: 168 },
       "& .MuiOutlinedInput-root": { borderRadius: 2 },
+      "& input::-webkit-calendar-picker-indicator": { cursor: "pointer" },
     }}
-    sx={{
-  bgcolor: alpha("#fff", 0.95),
-  borderRadius: 2,
-  minWidth: { sm: 168 },
-  "& .MuiOutlinedInput-root": { borderRadius: 2 },
-  "& input::-webkit-calendar-picker-indicator": { cursor: "pointer" },
-}}
   />
   <Button
     variant="contained"

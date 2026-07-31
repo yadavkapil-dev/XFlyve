@@ -93,7 +93,7 @@ describe("adminController.downloadWorkDiaries", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test("builds an uploadDate range from dateFrom/dateTo, with no status filter (work diaries have no status)", async () => {
+  test("builds a workDate range (with an uploadDate-when-workDate-is-null fallback) from dateFrom/dateTo, with no status filter (work diaries have no status)", async () => {
     const { controller, WorkDiary } = loadController();
     WorkDiary.find.mockReturnValueOnce(findChain([]));
 
@@ -101,9 +101,51 @@ describe("adminController.downloadWorkDiaries", () => {
     await controller.downloadWorkDiaries({ query: { dateFrom: "2026-07-01", dateTo: "2026-07-31" } }, res);
 
     const calledQuery = WorkDiary.find.mock.calls[0][0];
-    expect(calledQuery.uploadDate.$gte.toISOString()).toBe("2026-07-01T00:00:00.000Z");
-    expect(calledQuery.uploadDate.$lt.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+    const [workDateClause, fallbackClause] = calledQuery.$or;
+    expect(workDateClause.workDate.$gte.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+    expect(workDateClause.workDate.$lt.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+    expect(fallbackClause.workDate).toBeNull();
+    expect(fallbackClause.uploadDate.$gte.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+    expect(fallbackClause.uploadDate.$lt.toISOString()).toBe("2026-08-01T00:00:00.000Z");
     expect(calledQuery.status).toBeUndefined();
+  });
+
+  test("a diary uploaded late for an earlier trip is matched by its workDate, not its uploadDate — an NHVR request for the trip date must still find it", async () => {
+    const { controller, WorkDiary } = loadController();
+    // Real Mongoose would evaluate this $or against the stored document;
+    // this simulates that evaluation directly against the query this
+    // controller builds, so the test fails if the query shape regresses
+    // back to filtering on uploadDate alone.
+    const diary = {
+      fileUrl: "https://cloudinary.example/monday.pdf",
+      driverId: { name: "Alice" },
+      workDate: new Date("2026-07-06T00:00:00.000Z"), // Monday — the trip date
+      uploadDate: new Date("2026-07-08T00:00:00.000Z"), // Wednesday — uploaded late
+    };
+    WorkDiary.find.mockReturnValueOnce(findChain([diary]));
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, body: fakePdfBody("pdf-bytes") });
+
+    const app = express();
+    app.get("/download-work-diaries", controller.downloadWorkDiaries);
+    const res = await request(app)
+      .get("/download-work-diaries")
+      // A range covering only Monday — would exclude this diary if the
+      // query still filtered on uploadDate (Wednesday).
+      .query({ dateFrom: "2026-07-06", dateTo: "2026-07-06" });
+
+    expect(res.status).toBe(200);
+
+    const calledQuery = WorkDiary.find.mock.calls[0][0];
+    const [workDateClause] = calledQuery.$or;
+    // The diary's workDate (Monday) falls inside the requested range.
+    expect(diary.workDate >= workDateClause.workDate.$gte).toBe(true);
+    expect(diary.workDate < workDateClause.workDate.$lt).toBe(true);
+    // Its uploadDate (Wednesday) does NOT — proving inclusion came from
+    // workDate, not a coincidental uploadDate match.
+    expect(diary.uploadDate < workDateClause.workDate.$gte || diary.uploadDate >= workDateClause.workDate.$lt).toBe(true);
+
+    // Filename reflects the trip date (workDate), not the upload date.
+    expect(res.headers["content-disposition"]).toContain("work_diaries_2026-07-06_to_2026-07-06.zip");
   });
 
   test("driverId is optional — omitting it doesn't scope the query to any one driver", async () => {

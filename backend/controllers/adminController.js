@@ -20,7 +20,7 @@ const DRIVER_DEFAULT_SORT = { name: 1 };
 
 // GET /api/admin/drivers — paginated, searchable, filterable
 // Query params: page, limit, sort (name|createdAt|email), search (matches
-// name), driverType, recordStatus (defaults to excluding archived).
+// name), recordStatus (defaults to excluding archived).
 exports.getAllDrivers = async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
@@ -38,8 +38,6 @@ exports.getAllDrivers = async (req, res) => {
 
     const searchOr = buildSearchOr(req.query.search, ["name"]);
     if (searchOr) Object.assign(query, searchOr);
-
-    if (req.query.driverType) query.driverType = req.query.driverType;
 
     const [drivers, total] = await Promise.all([
       Driver.find(query).select("-password").sort(sort).skip(skip).limit(limit),
@@ -417,15 +415,11 @@ exports.createDriver = async (req, res) => {
       name,
       email,
       password,
-      driverType,
       phone,
       active,
       recordStatus,
-      payType,
       hourlyRate,
       kmRate,
-      deliveryRate,
-      abn,
     } = req.body;
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -441,15 +435,11 @@ exports.createDriver = async (req, res) => {
       existingDriver.name = name;
       existingDriver.email = normalizedEmail;
       existingDriver.password = password;
-      existingDriver.driverType = driverType;
       existingDriver.phone = phone;
       existingDriver.active = true;
       existingDriver.recordStatus = "active";
-      existingDriver.payType = payType;
       existingDriver.hourlyRate = hourlyRate;
       existingDriver.kmRate = kmRate;
-      existingDriver.deliveryRate = deliveryRate;
-      existingDriver.abn = abn;
       existingDriver.role = "driver";
       await existingDriver.save();
 
@@ -467,15 +457,11 @@ exports.createDriver = async (req, res) => {
       name,
       email: normalizedEmail,
       password,
-      driverType,
       phone,
       active,
       recordStatus,
-      payType,
       hourlyRate,
       kmRate,
-      deliveryRate,
-      abn,
       role: "driver", // force role to driver
     });
 
@@ -516,13 +502,9 @@ exports.updateDriver = async (req, res) => {
       name,
       email,
       password,
-      driverType,
       phone,
-      payType,
       hourlyRate,
       kmRate,
-      deliveryRate,
-      abn,
     } = req.body;
 
     const driver = await Driver.findById(driverId);
@@ -545,13 +527,9 @@ exports.updateDriver = async (req, res) => {
     if (password && password.trim()) {
       driver.password = password.trim();
     }
-    if (driverType !== undefined) driver.driverType = driverType;
     if (phone !== undefined) driver.phone = phone;
-    if (payType !== undefined) driver.payType = payType;
     if (hourlyRate !== undefined) driver.hourlyRate = hourlyRate;
     if (kmRate !== undefined) driver.kmRate = kmRate;
-    if (deliveryRate !== undefined) driver.deliveryRate = deliveryRate;
-    if (abn !== undefined) driver.abn = abn;
 
     await driver.save();
 

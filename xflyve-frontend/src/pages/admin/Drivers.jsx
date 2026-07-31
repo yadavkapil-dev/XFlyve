@@ -9,7 +9,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -20,9 +19,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import PersonAddAltIcon from "@mui/icons-material/PersonAddAlt";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import SearchIcon from "@mui/icons-material/Search";
-import { getAllDrivers, createDriver, updateDriver, deleteDriver, getPublicDrivers } from "../../api";
-import PaginationControls from "../../components/PaginationControls";
+import { getAllDrivers, createDriver, updateDriver, deleteDriver } from "../../api";
 
 const palette = {
   ink: "#0b1220",
@@ -35,27 +32,15 @@ const palette = {
   teal: "#0e7c76",
 };
 
-// driverType/payType enums match backend/models/driver.js exactly.
-const DRIVER_TYPES = [
-  { value: "local", label: "Local" },
-  { value: "interstate", label: "Interstate" },
-];
-const PAY_TYPES = [
-  { value: "hourly", label: "Hourly" },
-  { value: "per_km", label: "Per KM" },
-  { value: "per_delivery", label: "Per Delivery" },
-  { value: "salary", label: "Salary" },
-  { value: "contractor", label: "Contractor" },
-];
+// Fixed high limit instead of pagination — matches the same small-team
+// simplification already applied to Logs/Jobs/PODs (e.g. PodsList's
+// pending-queue fetch).
+const DRIVERS_FETCH_LIMIT = 100;
 
 const emptyProfileFields = {
-  driverType: "",
   phone: "",
-  payType: "",
   hourlyRate: "",
   kmRate: "",
-  deliveryRate: "",
-  abn: "",
 };
 
 const emptyDriver = { name: "", email: "", password: "", ...emptyProfileFields };
@@ -66,13 +51,9 @@ const emptyEditDriver = { id: "", name: "", email: "", password: "", ...emptyPro
 // to numbers (they're plain text inputs in state).
 const buildProfilePayload = (fields) => {
   const payload = {};
-  if (fields.driverType) payload.driverType = fields.driverType;
   if (fields.phone.trim()) payload.phone = fields.phone.trim();
-  if (fields.payType) payload.payType = fields.payType;
   if (fields.hourlyRate !== "") payload.hourlyRate = Number(fields.hourlyRate);
   if (fields.kmRate !== "") payload.kmRate = Number(fields.kmRate);
-  if (fields.deliveryRate !== "") payload.deliveryRate = Number(fields.deliveryRate);
-  if (fields.abn.trim()) payload.abn = fields.abn.trim();
   return payload;
 };
 
@@ -89,21 +70,11 @@ const getBackendErrorMessage = (err, fallback) => {
 // in both places.
 const DriverProfileFields = ({ fields, onFieldChange }) => (
   <>
-    <TextField select label="Driver Type" value={fields.driverType} onChange={(e) => onFieldChange("driverType", e.target.value)} fullWidth>
-      <MenuItem value=""><em>Not set</em></MenuItem>
-      {DRIVER_TYPES.map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
-    </TextField>
     <TextField label="Phone" value={fields.phone} onChange={(e) => onFieldChange("phone", e.target.value)} fullWidth />
-    <TextField select label="Pay Type" value={fields.payType} onChange={(e) => onFieldChange("payType", e.target.value)} fullWidth>
-      <MenuItem value=""><em>Not set</em></MenuItem>
-      {PAY_TYPES.map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
-    </TextField>
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
       <TextField label="Hourly Rate" type="number" value={fields.hourlyRate} onChange={(e) => onFieldChange("hourlyRate", e.target.value)} inputProps={{ min: 0, step: "0.01" }} fullWidth />
       <TextField label="KM Rate" type="number" value={fields.kmRate} onChange={(e) => onFieldChange("kmRate", e.target.value)} inputProps={{ min: 0, step: "0.01" }} fullWidth />
-      <TextField label="Delivery Rate" type="number" value={fields.deliveryRate} onChange={(e) => onFieldChange("deliveryRate", e.target.value)} inputProps={{ min: 0, step: "0.01" }} fullWidth />
     </Box>
-    <TextField label="ABN" value={fields.abn} onChange={(e) => onFieldChange("abn", e.target.value)} fullWidth />
   </>
 );
 
@@ -117,71 +88,24 @@ const Drivers = () => {
   const [editDriver, setEditDriver] = useState(emptyEditDriver);
   const [editOpen, setEditOpen] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
-  const [showDemoControl, setShowDemoControl] = useState(false);
-  const [filterDriverType, setFilterDriverType] = useState("");
-  const [filterRecordStatus, setFilterRecordStatus] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [pagination, setPagination] = useState(null);
-
-  // Debounce the search box so we don't fire a request on every keystroke.
-  useEffect(() => {
-    const handle = setTimeout(() => setSearch(searchInput.trim()), 400);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
-
-  // Any filter change should reset back to page 1.
-  useEffect(() => {
-    setPage(1);
-  }, [filterDriverType, filterRecordStatus, search]);
 
   const fetchDrivers = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const params = { page, limit, sort: "name" };
-      if (filterDriverType) params.driverType = filterDriverType;
-      if (filterRecordStatus) params.recordStatus = filterRecordStatus;
-      if (search) params.search = search;
-
-      const res = await getAllDrivers(params);
+      const res = await getAllDrivers({ limit: DRIVERS_FETCH_LIMIT, sort: "name" });
       setDrivers(res.data.data || []);
-      setPagination(res.data.pagination || null);
     } catch (err) {
       console.error("Fetch drivers error:", err.response || err);
       setError("Failed to load drivers");
     } finally {
       setLoading(false);
     }
-  }, [page, limit, filterDriverType, filterRecordStatus, search]);
-
-  const fetchDemoDrivers = async () => {
-    setLoading(true);
-    try {
-      const res = await getPublicDrivers();
-      setDrivers(res.data.users || []);
-      setPagination(null);
-      setSuccess("Demo driver list loaded. Use real drivers for operations.");
-    } catch (err) {
-      console.error("Demo drivers error:", err.response || err);
-      setError("Failed to load demo drivers");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDrivers();
   }, [fetchDrivers]);
-
-  const clearFilters = () => {
-    setFilterDriverType("");
-    setFilterRecordStatus("");
-    setSearchInput("");
-    setSearch("");
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -208,8 +132,14 @@ const Drivers = () => {
     setError("");
     setSuccess("");
     try {
-      await deleteDriver(deleteDriverId);
-      setSuccess("Driver deleted successfully.");
+      const res = await deleteDriver(deleteDriverId);
+      // The backend archives the driver (soft-delete, same pattern as
+      // Trucks) rather than permanently removing it — historical
+      // jobs/PODs/work diaries still reference this driverId, so a hard
+      // delete would orphan those records. Surface its own message rather
+      // than a hardcoded "deleted", since "deleted" implies the record is
+      // gone, not just hidden from the active roster.
+      setSuccess(res.data?.message || "Driver archived.");
       setDeleteDriverId(null);
       fetchDrivers();
     } catch (err) {
@@ -223,13 +153,9 @@ const Drivers = () => {
       name: driver.name || "",
       email: driver.email || "",
       password: "",
-      driverType: driver.driverType || "",
       phone: driver.phone || "",
-      payType: driver.payType || "",
       hourlyRate: driver.hourlyRate ?? "",
       kmRate: driver.kmRate ?? "",
-      deliveryRate: driver.deliveryRate ?? "",
-      abn: driver.abn || "",
     });
     setEditOpen(true);
     setError("");
@@ -295,46 +221,11 @@ const Drivers = () => {
               <Button type="submit" variant="contained" size="large" fullWidth sx={{ minHeight: 56, borderRadius: 3, bgcolor: palette.ink, fontWeight: 950 }}>
                 Create Driver
               </Button>
-              <Button variant="text" onClick={() => setShowDemoControl((v) => !v)} sx={{ fontWeight: 850 }}>
-                {showDemoControl ? "Hide demo tools" : "Show demo tools"}
-              </Button>
-              {showDemoControl && (
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                  <Button fullWidth variant="outlined" onClick={fetchDrivers}>Load Real Drivers</Button>
-                  <Button fullWidth variant="outlined" color="warning" onClick={fetchDemoDrivers}>Load Demo Drivers</Button>
-                </Stack>
-              )}
             </Stack>
           </Paper>
 
           <Stack spacing={2}>
             <Typography variant="h5" fontWeight={950} sx={{ color: palette.ink, letterSpacing: "-0.045em" }}>Drivers</Typography>
-
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "1.4fr 1fr 1fr auto" }, gap: 1.5, alignItems: "center" }}>
-                <TextField
-                  fullWidth
-                  label="Search"
-                  placeholder="Driver name"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: palette.muted }} fontSize="small" /> }}
-                />
-                <TextField select fullWidth label="Driver Type" value={filterDriverType} onChange={(e) => setFilterDriverType(e.target.value)}>
-                  <MenuItem value="">All Types</MenuItem>
-                  {DRIVER_TYPES.map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
-                </TextField>
-                <TextField select fullWidth label="Status" value={filterRecordStatus} onChange={(e) => setFilterRecordStatus(e.target.value)}>
-                  <MenuItem value="">Active drivers</MenuItem>
-                  <MenuItem value="active">Active</MenuItem>
-                  <MenuItem value="inactive">Inactive</MenuItem>
-                  <MenuItem value="archived">Archived</MenuItem>
-                </TextField>
-                <Button variant="outlined" onClick={clearFilters} sx={{ minHeight: 54, borderRadius: 3, fontWeight: 850 }}>
-                  Clear
-                </Button>
-              </Box>
-            </Paper>
 
             {loading ? (
               <Paper elevation={0} sx={{ p: 3, borderRadius: 5, border: "1px solid", borderColor: palette.line }}>Loading drivers...</Paper>
@@ -371,24 +262,17 @@ const Drivers = () => {
                 ))}
               </Box>
             )}
-
-            <PaginationControls
-              pagination={pagination}
-              onPageChange={setPage}
-              onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
-              palette={palette}
-            />
           </Stack>
         </Box>
 
         <Dialog open={Boolean(deleteDriverId)} onClose={() => setDeleteDriverId(null)} PaperProps={{ sx: { borderRadius: 5 } }}>
-          <DialogTitle sx={{ fontWeight: 950 }}>Delete this driver?</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 950 }}>Archive this driver?</DialogTitle>
           <DialogContent>
-            <DialogContentText>This removes the driver account. Existing historical records may still reference this driver.</DialogContentText>
+            <DialogContentText>This archives the driver account and removes them from the active roster — it is not a permanent delete. Historical jobs/PODs/work diaries still reference this driver.</DialogContentText>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={() => setDeleteDriverId(null)}>Cancel</Button>
-            <Button onClick={handleDeleteConfirm} color="error" variant="contained">Delete</Button>
+            <Button onClick={handleDeleteConfirm} color="error" variant="contained">Archive</Button>
           </DialogActions>
         </Dialog>
 

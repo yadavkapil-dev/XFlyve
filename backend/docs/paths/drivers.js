@@ -10,7 +10,6 @@ module.exports = {
       parameters: [
         h.pageParam, h.limitParam, h.sortParam(["name", "createdAt", "email"], "name"),
         { name: "search", in: "query", schema: { type: "string" }, description: "Matches against name." },
-        { name: "driverType", in: "query", schema: { type: "string", enum: ["local", "interstate"] } },
         { name: "recordStatus", in: "query", schema: { type: "string", enum: ["active", "inactive", "archived"] }, description: "Defaults to excluding archived records if omitted." },
       ],
       responses: {
@@ -40,7 +39,6 @@ module.exports = {
                 name: { type: "string", example: "Jane Driver" },
                 email: { type: "string", example: "jane.driver@example.com" },
                 password: { type: "string", minLength: 6, example: "S3cur3Pass!" },
-                driverType: { type: "string", enum: ["local", "interstate"], example: "local" },
               },
             },
           },
@@ -82,9 +80,8 @@ module.exports = {
               required: ["name", "email"],
               properties: {
                 name: { type: "string" }, email: { type: "string" }, password: { type: "string", minLength: 6 },
-                driverType: { type: "string", enum: ["local", "interstate"] }, phone: { type: "string" },
-                payType: { type: "string", enum: ["hourly", "per_km", "per_delivery", "salary", "contractor"] },
-                hourlyRate: { type: "number" }, kmRate: { type: "number" }, deliveryRate: { type: "number" }, abn: { type: "string" },
+                phone: { type: "string" },
+                hourlyRate: { type: "number" }, kmRate: { type: "number" },
               },
             },
           },
@@ -202,20 +199,6 @@ module.exports = {
         403: h.forbiddenStatusEnvelope("Access denied: Admins only"),
         404: h.notFoundStatus("No POD files"),
         500: h.serverErrorStatus,
-      },
-    },
-  },
-  "/api/admin/show-all-drivers": {
-    get: {
-      tags: ["Drivers"],
-      summary: "[Legacy] List all non-archived drivers (unpaginated, capped at 500)",
-      description: 'Marked in the source as "kept for compatibility" — functionally a duplicate of `GET /api/admin/drivers` without pagination/search/filtering. Flagged during the Phase 10 audit as a candidate for deprecation rather than a first-class endpoint; documented here for completeness since it is still live and admin-authenticated.',
-      security: h.bearer,
-      responses: {
-        200: { description: "OK.", content: { "application/json": { example: { success: true, total: 1, users: [{ _id: FAKE_DRIVER_ID, name: "Jane Driver" }], data: [{ _id: FAKE_DRIVER_ID, name: "Jane Driver" }] } } } },
-        401: h.unauthorized,
-        403: h.forbiddenStatusEnvelope("Access denied: Admins only"),
-        500: h.serverErrorSuccess,
       },
     },
   },

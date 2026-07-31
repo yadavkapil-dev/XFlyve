@@ -39,7 +39,7 @@ describe("Flow: Authentication", () => {
 
     // The issued token must actually work against a real protected route.
     // (toAuthUser() deliberately omits email from the profile payload —
-    // id/name/role/driverType only — so assert on what's actually returned.)
+    // id/name/role only — so assert on what's actually returned.)
     const profileRes = await request(app).get("/api/auth/profile").set("Authorization", `Bearer ${res.body.token}`);
     expect(profileRes.status).toBe(200);
     expect(profileRes.body.data).toMatchObject({ name: driver.name, role: "driver" });

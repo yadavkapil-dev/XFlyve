@@ -27,10 +27,6 @@ const driverSchema = new mongoose.Schema(
       enum: ["driver", "admin"],
       default: "driver", // Default to 'driver' role
     },
-    driverType: {
-      type: String,
-      enum: ["local", "interstate"],
-    },
     phone: {
       type: String,
       trim: true,
@@ -45,10 +41,6 @@ const driverSchema = new mongoose.Schema(
       enum: ["active", "inactive", "archived"],
       default: "active",
     },
-    payType: {
-      type: String,
-      enum: ["hourly", "per_km", "per_delivery", "salary", "contractor"],
-    },
     hourlyRate: {
       type: Number,
       min: 0,
@@ -56,14 +48,6 @@ const driverSchema = new mongoose.Schema(
     kmRate: {
       type: Number,
       min: 0,
-    },
-    deliveryRate: {
-      type: Number,
-      min: 0,
-    },
-    abn: {
-      type: String,
-      trim: true,
     },
     // Password reset — only ever a SHA-256 hash of the emailed token, never
     // the raw token itself, so a database read (or leak) can't be used to

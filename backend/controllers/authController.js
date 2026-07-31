@@ -17,18 +17,16 @@ const toAuthUser = (user) => ({
   _id: user._id,
   name: user.name,
   role: user.role,
-  driverType: user.driverType,
 });
 
 // @desc    Driver signup
 exports.signup = async (req, res) => {
   try {
-    let { name, email, password, driverType } = req.body;
+    let { name, email, password } = req.body;
 
     // Trim inputs
     name = name.trim();
     email = email.trim().toLowerCase();
-    driverType = driverType?.trim();
 
     // Prevent duplicate emails
     const existing = await Driver.findOne({ email });
@@ -40,7 +38,6 @@ exports.signup = async (req, res) => {
       name,
       email,
       password,
-      driverType,
       role: "driver", // force role for signup
     });
 

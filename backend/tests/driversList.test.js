@@ -86,18 +86,6 @@ describe("GET /api/admin/drivers (getAllDrivers) — pagination/search/filter/so
     expect(chain.sort).toHaveBeenCalledWith({ createdAt: -1 });
   });
 
-  test("filter: driverType", async () => {
-    const { controller, Driver } = loadController();
-    const chain = findChain([]);
-    Driver.find.mockReturnValueOnce(chain);
-    Driver.countDocuments.mockResolvedValueOnce(0);
-
-    const res = makeResponse();
-    await controller.getAllDrivers({ query: { driverType: "interstate" } }, res);
-
-    expect(Driver.find).toHaveBeenCalledWith(expect.objectContaining({ driverType: "interstate" }));
-  });
-
   test("filter: recordStatus overrides the default archived-exclusion", async () => {
     const { controller, Driver } = loadController();
     const chain = findChain([]);
@@ -160,12 +148,12 @@ describe("GET /api/admin/drivers (getAllDrivers) — pagination/search/filter/so
 
     const res = makeResponse();
     await controller.getAllDrivers(
-      { query: { search: "Jane", driverType: "local", page: "1", limit: "10" } },
+      { query: { search: "Jane", recordStatus: "active", page: "1", limit: "10" } },
       res
     );
 
     const calledQuery = Driver.find.mock.calls[0][0];
-    expect(calledQuery.driverType).toBe("local");
+    expect(calledQuery.recordStatus).toBe("active");
     expect(calledQuery.$or).toBeDefined();
     expect(chain.limit).toHaveBeenCalledWith(10);
   });

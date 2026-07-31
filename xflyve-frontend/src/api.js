@@ -47,7 +47,7 @@ export const forgotPassword = (email) => api.post("/auth/forgot-password", { ema
 export const resetPassword = (token, password) => api.post("/auth/reset-password", { token, password });
 
 // ===== ADMIN ROUTES =====
-// params: { page, limit, sort, search, driverType, recordStatus }
+// params: { page, limit, sort, search, recordStatus }
 export const getAllDrivers = (params) => api.get("/admin/drivers", { params });
 export const createDriver = (driverData) => api.post("/admin/drivers", driverData);
 export const updateDriver = (driverId, driverData) => api.put(`/admin/drivers/${driverId}`, driverData);
@@ -226,8 +226,5 @@ export const getJobActivity = (jobId) => api.get(`/activities/job/${jobId}`);
 // backend/services/ai/aiService.js. Auth is the same Bearer-token
 // interceptor as every other call here; no separate pattern.
 export const sendAiChatMessage = (message) => api.post("/ai/chat", { message });
-
-// ===== PUBLIC ROUTE FOR PRESENTATION (NO TOKEN REQUIRED) =====
-export const getPublicDrivers = () => api.get("/admin/show-all-drivers");
 
 export default api;

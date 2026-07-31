@@ -31,7 +31,6 @@ const makeUser = (overrides = {}) => ({
   email: "driver@example.com",
   password: "hashed-password",
   role: "driver",
-  driverType: "local",
   recordStatus: "active",
   active: true,
   ...overrides,

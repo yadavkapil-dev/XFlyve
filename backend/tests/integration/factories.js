@@ -17,7 +17,6 @@ const createDriver = async (overrides = {}) => {
     email: overrides.email || `${unique(role)}@example.com`,
     password: overrides.password || PASSWORD,
     role,
-    driverType: role === "driver" ? overrides.driverType || "local" : undefined,
     recordStatus: overrides.recordStatus || "active",
     active: overrides.active !== undefined ? overrides.active : true,
   });

@@ -6,8 +6,6 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const { requireAdmin } = require("../middlewares/roleMiddleware");
 const validateRequest = require("../middlewares/validateRequest");
 const { driverCreationValidator, driverUpdateValidator } = require("../validators/authValidator");
-const Driver = require("../models/driver");
-const logger = require("../utils/logger");
 
 /* ==========================================================
    🔐 PROTECTED ADMIN ROUTES (Requires Token + Admin Role)
@@ -28,28 +26,5 @@ router.get("/stats", authMiddleware, requireAdmin, adminController.getSystemStat
 router.get("/dashboard-stats", authMiddleware, requireAdmin, adminController.getDashboardStats);
 router.get("/download-all-pods", authMiddleware, requireAdmin, adminController.downloadAllPods);
 router.get("/download-work-diaries", authMiddleware, requireAdmin, adminController.downloadWorkDiaries);
-
-/* ==========================================================
-   Demo driver route kept for compatibility, but protected.
-   ========================================================== */
-router.get("/show-all-drivers", authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    // Limit to 500 if you seeded 500 users, adjust if needed
-    const drivers = await Driver.find({ recordStatus: { $ne: "archived" } }).select("-password").limit(500);
-
-    return res.json({
-      success: true,
-      total: drivers.length,
-      users: drivers,
-      data: drivers,
-    });
-  } catch (err) {
-    logger.error("Error fetching drivers: %o", err);
-    return res.status(500).json({
-      success: false,
-      message: "Error fetching drivers",
-    });
-  }
-});
 
 module.exports = router;

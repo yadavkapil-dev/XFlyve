@@ -240,24 +240,18 @@ const Navbar = () => {
                     <Typography variant="subtitle2" fontWeight={900} sx={{ color: palette.ink }}>
                       {user.name || "XFlyve user"}
                     </Typography>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.75 }}>
-                      <Chip
-                        size="small"
-                        label={user.role || "user"}
-                        sx={{
-                          height: 24,
-                          textTransform: "capitalize",
-                          color: palette.teal,
-                          bgcolor: alpha(palette.teal, 0.08),
-                          fontWeight: 800,
-                        }}
-                      />
-                      {user.driverType && (
-                        <Typography variant="caption" sx={{ color: palette.muted, textTransform: "capitalize" }}>
-                          {user.driverType}
-                        </Typography>
-                      )}
-                    </Stack>
+                    <Chip
+                      size="small"
+                      label={user.role || "user"}
+                      sx={{
+                        mt: 0.75,
+                        height: 24,
+                        textTransform: "capitalize",
+                        color: palette.teal,
+                        bgcolor: alpha(palette.teal, 0.08),
+                        fontWeight: 800,
+                      }}
+                    />
                   </Box>
                   <Divider />
                   {navItems.map((item) => (
@@ -291,7 +285,6 @@ const Navbar = () => {
                 sx={{ color: alpha("#fff", 0.58), textTransform: "capitalize" }}
               >
                 {user.role}
-                {user.driverType ? ` · ${user.driverType}` : ""}
               </Typography>
             </Box>
             <Button

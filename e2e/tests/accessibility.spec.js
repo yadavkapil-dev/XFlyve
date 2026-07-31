@@ -71,7 +71,7 @@ const seedJobWithPendingPod = async () => {
 
   await api.post("admin/drivers", {
     headers: adminAuth,
-    data: { name: A11Y_DRIVER_NAME, email: A11Y_DRIVER_EMAIL, password: PASSWORD, driverType: "local" },
+    data: { name: A11Y_DRIVER_NAME, email: A11Y_DRIVER_EMAIL, password: PASSWORD },
   });
   const driversRes = await api.get("admin/drivers", { headers: adminAuth });
   const { data: drivers } = await driversRes.json();

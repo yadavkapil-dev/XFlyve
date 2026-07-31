@@ -240,7 +240,7 @@ exports.getAllJobs = async (req, res) => {
 
     const [jobs, total] = await Promise.all([
       Job.find(query)
-        .populate("assignedTo", "name email driverType")
+        .populate("assignedTo", "name email")
         .populate("assignedTruck", "truckNumber")
         .sort(sort)
         .skip(skip)
@@ -264,7 +264,7 @@ exports.getJobsReadyForInvoicing = async (req, res) => {
   try {
     const jobs = await Job.findReadyForInvoicing();
     const populatedJobs = await Job.populate(jobs, [
-      { path: "assignedTo", select: "name email driverType" },
+      { path: "assignedTo", select: "name email" },
       { path: "assignedTruck", select: "truckNumber" },
       { path: "podIds" },
       { path: "diaryIds" },
@@ -615,7 +615,7 @@ exports.updateJob = async (req, res) => {
     }
 
     const updatedJob = await Job.findById(jobId)
-      .populate("assignedTo", "name email driverType")
+      .populate("assignedTo", "name email")
       .populate("assignedTruck", "truckNumber");
 
     res.status(200).json({ status: "success", data: updatedJob });

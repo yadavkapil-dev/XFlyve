@@ -459,7 +459,7 @@ exports.listPendingPODApprovals = async (req, res) => {
 
     const [pods, total] = await Promise.all([
       JobPod.find(query)
-        .populate("driverId", "name email driverType role")
+        .populate("driverId", "name email role")
         .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
         .sort(sort)
         .skip(skip)
@@ -494,7 +494,7 @@ exports.listAllPODs = async (req, res) => {
 
     const [pods, total] = await Promise.all([
       JobPod.find(query)
-        .populate("driverId", "name email driverType role")
+        .populate("driverId", "name email role")
         .populate("jobId", "title pickupLocation deliveryLocation jobDate status")
         .sort(sort)
         .skip(skip)

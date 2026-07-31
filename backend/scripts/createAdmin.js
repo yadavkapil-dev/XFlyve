@@ -18,7 +18,6 @@ async function createAdmin() {
       email: "admin@example.com",
       password: "admin123",
       role: "admin",
-      driverType: "local", // or leave blank, admin can have any or none
     });
 
     await adminUser.save();

@@ -36,7 +36,6 @@ describe("Flow: createDriver — archived-email reactivation", () => {
       role: "driver",
       email: "reactivate-me@example.com",
       name: "Old Name",
-      driverType: "local",
       recordStatus: "archived",
     });
     // deleteDriver's real behavior also flips `active` to false on archive —
@@ -52,7 +51,6 @@ describe("Flow: createDriver — archived-email reactivation", () => {
         name: "New Name",
         email: "reactivate-me@example.com",
         password: "BrandNewPassword1!",
-        driverType: "interstate",
       });
 
     expect(res.status).toBe(201);
@@ -60,7 +58,6 @@ describe("Flow: createDriver — archived-email reactivation", () => {
       name: "New Name",
       recordStatus: "active",
       active: true,
-      driverType: "interstate",
       role: "driver",
     });
     expect(res.body.data.password).toBeUndefined();

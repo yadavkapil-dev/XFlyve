@@ -14,7 +14,6 @@ const normalizeUser = (userData) => {
     _id: userData._id || id,
     name: userData.name || "",
     role: userData.role || "",
-    driverType: userData.driverType || "",
   };
 };
 

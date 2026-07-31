@@ -18,7 +18,6 @@ module.exports = {
                 name: { type: "string", example: "Jane Driver" },
                 email: { type: "string", example: "jane.driver@example.com" },
                 password: { type: "string", minLength: 6, example: "S3cur3Pass!" },
-                driverType: { type: "string", enum: ["local", "interstate"], example: "local" },
               },
             },
           },
@@ -52,7 +51,7 @@ module.exports = {
       responses: {
         200: {
           description: "Authenticated.",
-          content: { "application/json": { example: { status: "success", token: FAKE_JWT, data: { id: FAKE_DRIVER_ID, _id: FAKE_DRIVER_ID, name: "Jane Driver", role: "driver", driverType: "local" } } } },
+          content: { "application/json": { example: { status: "success", token: FAKE_JWT, data: { id: FAKE_DRIVER_ID, _id: FAKE_DRIVER_ID, name: "Jane Driver", role: "driver" } } } },
         },
         401: {
           description: "Wrong email or password. Deliberately identical message for both cases — no user enumeration.",
@@ -117,7 +116,7 @@ module.exports = {
       summary: "Get the authenticated user's own profile",
       security: h.bearer,
       responses: {
-        200: { description: "OK.", content: { "application/json": { example: { status: "success", data: { id: FAKE_DRIVER_ID, _id: FAKE_DRIVER_ID, name: "Jane Driver", role: "driver", driverType: "local" } } } } },
+        200: { description: "OK.", content: { "application/json": { example: { status: "success", data: { id: FAKE_DRIVER_ID, _id: FAKE_DRIVER_ID, name: "Jane Driver", role: "driver" } } } } },
         401: h.unauthorized,
         404: h.notFoundStatus("User"),
         500: h.serverErrorStatus,

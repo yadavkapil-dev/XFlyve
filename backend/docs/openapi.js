@@ -37,7 +37,7 @@ const openApiSpec = {
       "Logistics operations API: jobs, drivers, trucks, daily truck assignments, proof-of-delivery (POD), interstate work diaries, daily work logs, notifications, and append-only activity history.\n\n" +
       "All endpoints except `/`, `/test`, `/healthz`, `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/forgot-password`, and `POST /api/auth/reset-password` require a Bearer JWT (`Authorization: Bearer <token>`), obtained from the login response.\n\n" +
       "Two response envelope shapes exist across this API (see individual endpoints): `{ status, message, data }` (Auth/Jobs/Admin-drivers) and `{ success, message, data }` (everything else). This isn't a documentation inconsistency — it's what the code actually returns.\n\n" +
-      "A handful of routes are internal/legacy and flagged as such rather than presented as first-class API surface: `GET /test`, `GET /api/admin/truck-assignments/test` (debug smoke checks with no real function), and `GET /api/admin/show-all-drivers` (a legacy duplicate of `GET /api/admin/drivers`, kept only for backward compatibility).",
+      "A handful of routes are internal/legacy and flagged as such rather than presented as first-class API surface: `GET /test` and `GET /api/admin/truck-assignments/test` (debug smoke checks with no real function).",
   },
   servers: [
     { url: "http://localhost:3001", description: "Local development" },
@@ -93,15 +93,11 @@ const openApiSpec = {
           name: { type: "string", example: "Jane Driver" },
           email: { type: "string", example: "jane.driver@example.com" },
           role: { type: "string", enum: ["driver", "admin"], example: "driver" },
-          driverType: { type: "string", enum: ["local", "interstate"], example: "local" },
           phone: { type: "string", example: "0400 000 000" },
           active: { type: "boolean", example: true },
           recordStatus: { type: "string", enum: ["active", "inactive", "archived"], example: "active" },
-          payType: { type: "string", enum: ["hourly", "per_km", "per_delivery", "salary", "contractor"], example: "hourly" },
           hourlyRate: { type: "number", example: 35 },
           kmRate: { type: "number", example: 0.9 },
-          deliveryRate: { type: "number", example: 5 },
-          abn: { type: "string", example: "11 222 333 444" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },

@@ -122,12 +122,27 @@ const AdminPODs = () => {
     }
   }, []);
 
+  // NHVR compliance requests can name a driver who has since left (archived
+  // on the main Drivers page) — admin still needs to select them here to
+  // pull up historical PODs, so this dropdown includes archived drivers
+  // too (visually marked), unlike the active-only Drivers management page.
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
         const res = await getAllDrivers({ limit: 100 });
-        if (res.data.status === "success") setDrivers(res.data.data || []);
-        else setError("Failed to load drivers");
+        const active = res.data.status === "success" ? res.data.data || [] : [];
+        if (res.data.status !== "success") setError("Failed to load drivers");
+
+        let archived = [];
+        try {
+          const archivedRes = await getAllDrivers({ limit: 100, recordStatus: "archived" });
+          archived = archivedRes.data.status === "success" ? archivedRes.data.data || [] : [];
+        } catch {
+          // Best-effort: a failed archived-driver lookup shouldn't block the
+          // primary active-driver list from working.
+        }
+
+        setDrivers([...active, ...archived]);
       } catch (err) {
         setError(err.response?.data?.message || "Server error loading drivers");
       }
@@ -621,7 +636,7 @@ const AdminPODs = () => {
                 </MenuItem>
                 {drivers.map((driver) => (
                   <MenuItem key={driver._id} value={driver._id}>
-                    {driver.name}
+                    {driver.name}{driver.recordStatus === "archived" ? " (archived)" : ""}
                   </MenuItem>
                 ))}
               </Select>

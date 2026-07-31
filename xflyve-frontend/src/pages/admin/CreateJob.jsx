@@ -278,7 +278,7 @@ const CreateJob = () => {
                   <TextField select fullWidth label="Assigned Driver" name="assignedTo" value={formData.assignedTo} onChange={handleChange} required>
                     {drivers.map((driver) => (
                       <MenuItem key={driver._id} value={driver._id}>
-                        {driver.name} {driver.driverType ? `· ${driver.driverType}` : ""}
+                        {driver.name}
                       </MenuItem>
                     ))}
                   </TextField>

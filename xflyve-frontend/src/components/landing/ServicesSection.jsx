@@ -7,6 +7,7 @@ import EditNoteRoundedIcon from "@mui/icons-material/EditNoteRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import PaymentsRoundedIcon from "@mui/icons-material/PaymentsRounded";
 import RequestQuoteRoundedIcon from "@mui/icons-material/RequestQuoteRounded";
+import SupportAgentRoundedIcon from "@mui/icons-material/SupportAgentRounded";
 
 const features = [
   {
@@ -22,7 +23,7 @@ const features = [
   {
     icon: <CloudUploadRoundedIcon />,
     title: "POD records",
-    body: "Collect proof-of-delivery documents so completed jobs have the evidence owners need.",
+    body: "Drivers upload proof-of-delivery after each job, and admins approve or reject it — the one document type with a review step.",
   },
   {
     icon: <EditNoteRoundedIcon />,
@@ -32,17 +33,22 @@ const features = [
   {
     icon: <FolderCopyRoundedIcon />,
     title: "Compliance records",
-    body: "Keep work diaries and compliance documents organised for review instead of buried in chats.",
+    body: "NHVR work diary uploads for interstate jobs, searchable by driver and date — even for drivers who've since left.",
   },
   {
     icon: <PaymentsRoundedIcon />,
-    title: "Payroll preparation",
-    body: "Prepare the data needed for weekly driver pay checks before payroll logic is automated.",
+    title: "Pay-ready records",
+    body: "Surfaces each driver's hours, kilometres and deliveries from submitted work logs so you can work out weekly pay yourself — the app doesn't calculate or process payroll.",
   },
   {
     icon: <RequestQuoteRoundedIcon />,
     title: "Invoice readiness",
-    body: "See which completed jobs have approved records and are ready for invoice preparation.",
+    body: "See which completed jobs have an approved POD and are ready for invoice preparation.",
+  },
+  {
+    icon: <SupportAgentRoundedIcon />,
+    title: "AI Assistant",
+    body: "Ask what's due today or which trucks are free. Answers come from your real data only, with the same access rules as the rest of the app.",
   },
 ];
 

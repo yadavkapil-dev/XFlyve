@@ -95,7 +95,7 @@ const AiAssistant = () => {
     <Box
       sx={{
         position: "fixed",
-        left: { xs: 14, sm: 22 },
+        right: { xs: 14, sm: 22 },
         bottom: { xs: 14, sm: 22 },
         zIndex: (muiTheme) => muiTheme.zIndex.modal + 1,
         pointerEvents: "none",

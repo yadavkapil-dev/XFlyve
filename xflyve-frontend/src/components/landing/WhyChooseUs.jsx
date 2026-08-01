@@ -7,7 +7,7 @@ const WhyChooseUs = () => {
     "Reduce owner admin time without adding another weekly wage.",
     "Catch missing PODs, work logs and compliance records earlier.",
     "Give drivers a simple mobile workflow instead of back-and-forth calls.",
-    "Prepare weekly driver pay data and invoices with more confidence.",
+    "See which jobs are ready to invoice, and pull together each driver's hours and deliveries for weekly pay — with more confidence.",
     "Keep operations visible from phone, tablet or desktop.",
   ];
 

@@ -29,9 +29,9 @@ export const assistantTopics = [
     title: "Admin Features",
     suggestedQuestion: "What can an admin do?",
     phrases: ["what can an admin do", "admin features", "administrator features", "admin workflow", "admin tools"],
-    keywords: ["manage jobs", "review pods", "approve work logs", "admin dashboard", "invoice readiness"],
+    keywords: ["manage jobs", "review pods", "monitor work logs", "admin dashboard", "invoice readiness"],
     answer:
-      "Admins can create and edit jobs, manage drivers and trucks, assign trucks, review PODs, approve or reject work diaries and daily work records, monitor dashboards, and view jobs that meet invoice-readiness rules.",
+      "Admins can create and edit jobs, manage drivers and trucks, assign trucks, review and approve or reject PODs, monitor driver-submitted work diaries and daily work logs, bulk-download a day's approved PODs or a driver's work diaries for a date range, and view jobs that meet invoice-readiness rules.",
   },
   {
     id: "driver-features",
@@ -40,7 +40,7 @@ export const assistantTopics = [
     phrases: ["what can a driver do", "driver features", "driver workflow", "driver tools", "driver portal"],
     keywords: ["assigned jobs", "start jobs", "complete jobs", "upload pod", "submit work logs"],
     answer:
-      "Drivers can log in, see only their assigned jobs, start and complete jobs, upload PODs, submit interstate diary documents, submit job-linked daily work logs, and review approval status for their submissions.",
+      "Drivers can log in, see only their assigned jobs, start and complete jobs, upload PODs and track their approval status, upload work diary documents for interstate jobs, and submit job-linked daily work logs.",
   },
   {
     id: "job-workflow",
@@ -124,6 +124,24 @@ export const assistantTopics = [
       "Drivers upload Proof of Delivery documents for jobs they own. The backend verifies ownership and file rules, uploads through Cloudinary, and admins can approve or reject the POD. Approved POD records are protected from driver changes.",
   },
   {
+    id: "work-diary-workflow",
+    title: "Work Diary Workflow",
+    suggestedQuestion: "How does the work diary work?",
+    phrases: ["how does the work diary work", "work diary workflow", "nhvr work diary", "work diary rules", "compliance records"],
+    keywords: ["interstate only diary", "work diary upload", "nhvr compliance", "no approval work diary", "bulk download diaries"],
+    answer:
+      "Work diaries exist only for interstate jobs — a local job never has a diary-upload option, and the backend rejects a diary linked to a local job. Unlike PODs, work diaries have no approval workflow: once uploaded, they're always editable or deletable by the driver or an admin. Admins can bulk-download a driver's diary pages for a date range for NHVR compliance requests, including for archived (ex-)drivers.",
+  },
+  {
+    id: "notifications",
+    title: "Notifications",
+    suggestedQuestion: "How do notifications work?",
+    phrases: ["how do notifications work", "notification system", "notification bell", "job notifications"],
+    keywords: ["admin notifications", "notification bell", "unread count", "pod submitted notification", "diary submitted notification"],
+    answer:
+      "Notifications go both ways. Admins are notified when a driver submits a POD, work diary, or work log. Drivers are notified when they're assigned or reassigned to a job, and when their POD is approved or rejected. Each notification names the driver and job involved, the notification bell groups them by job, and shows an unread count.",
+  },
+  {
     id: "auth-roles",
     title: "Authentication and Roles",
     suggestedQuestion: "How do authentication and roles work?",
@@ -164,9 +182,9 @@ export const assistantTopics = [
     title: "Future Improvements",
     suggestedQuestion: "What would you build next?",
     phrases: ["what would you build next", "future improvements", "what next", "roadmap", "next features"],
-    keywords: ["calendar views", "notifications", "audit history", "reporting improvements", "better exports"],
+    keywords: ["calendar views", "audit history", "reporting improvements", "better exports"],
     answer:
-      "Good next steps would be richer reporting, calendar views, notifications, audit history, improved exports, stronger search/filtering, and more visual operations dashboards. These are future improvements, not current production claims.",
+      "Good next steps would be richer reporting, calendar views, deeper audit history, improved exports, stronger search/filtering, and more visual operations dashboards. These are future improvements, not current production claims.",
   },
   {
     id: "limitations",

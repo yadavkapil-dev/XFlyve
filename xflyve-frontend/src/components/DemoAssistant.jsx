@@ -19,7 +19,6 @@ import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import { useLocation } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
 import {
   fallbackAnswer,
   getAssistantAnswer,
@@ -44,7 +43,6 @@ const welcomeMessage = {
 };
 
 const DemoAssistant = () => {
-  const { user } = useAuth();
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -53,7 +51,7 @@ const DemoAssistant = () => {
 
   const publicAssistantPaths = ["/", "/login"];
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
-  const shouldShow = publicAssistantPaths.includes(normalizedPath) || Boolean(user);
+  const shouldShow = publicAssistantPaths.includes(normalizedPath);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([welcomeMessage]);

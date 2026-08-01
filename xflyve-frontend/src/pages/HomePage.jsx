@@ -45,6 +45,7 @@ const palette = {
   teal: "#0e7c76",
   emerald: "#07866f",
   amber: "#b76e00",
+  rose: "#b42318",
   violet: "#5b38c8",
 };
 
@@ -446,13 +447,6 @@ const HomePage = () => {
 
   const quickActions = [
     {
-      label: "Create Job",
-      description: "Assign work fast",
-      path: "/jobs/create",
-      icon: <AddCircleOutlineIcon />,
-      featured: true,
-    },
-    {
       label: "Manage Jobs",
       description: "Track today's work",
       path: "/jobs",
@@ -682,6 +676,31 @@ const HomePage = () => {
               </Paper>
             </Box>
 
+            <Box sx={{ gridColumn: "1 / -1" }}>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<AddCircleOutlineIcon />}
+                onClick={() => navigate("/jobs/create")}
+                sx={{
+                  minHeight: { xs: 56, sm: 58 },
+                  width: { xs: "100%", sm: "auto" },
+                  borderRadius: 3.5,
+                  bgcolor: "white",
+                  color: palette.ink,
+                  fontWeight: 950,
+                  px: { xs: 3, sm: 3.5 },
+                  letterSpacing: "-0.02em",
+                  boxShadow: `0 16px 36px ${alpha("#000", 0.14)}`,
+                  "&:hover": {
+                    bgcolor: alpha("#fff", 0.92),
+                    boxShadow: `0 18px 42px ${alpha("#000", 0.18)}`,
+                  },
+                }}
+              >
+                Create Job
+              </Button>
+            </Box>
           </Box>
         </Paper>
 
@@ -907,7 +926,16 @@ const HomePage = () => {
                       { status: "Out of Service", count: dashboard.truckStatusBreakdown["out-of-service"] },
                     ]}
                     xAxis={[{ dataKey: "status", scaleType: "band" }]}
-                    series={[{ dataKey: "count", label: "Trucks", color: palette.teal }]}
+                    series={[
+                      {
+                        dataKey: "count",
+                        label: "Trucks",
+                        // Same semantic colors as the status chips on the Trucks page:
+                        // Available (emerald), On Route (amber), Out of Service (rose).
+                        colorGetter: ({ dataIndex }) =>
+                          [palette.emerald, palette.amber, palette.rose][dataIndex],
+                      },
+                    ]}
                     height={260}
                   />
                 </ChartCard>

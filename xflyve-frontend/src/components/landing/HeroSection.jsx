@@ -106,7 +106,7 @@ const HeroSection = () => {
               }}
             >
               XFlyve helps owners manage jobs, drivers, PODs, daily records,
-              compliance documents, payroll preparation and invoice readiness —
+              compliance documents, and which jobs are ready to invoice —
               without adding another admin desk.
             </Typography>
 

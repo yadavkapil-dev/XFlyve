@@ -27,10 +27,9 @@ const MainLayout = () => {
       >
         Skip to main content
       </Link>
-      {/* Bottom-left, distinct from the public DemoAssistant's bottom-right
-          floating button (App.jsx) — the two answer different things (one
-          canned/marketing, one grounded in the caller's real data) and both
-          can be visible at once for a logged-in user. */}
+      {/* Bottom-right. The public DemoAssistant (App.jsx) is pre-login only
+          and never mounts on authenticated pages, so this is the only
+          assistant a logged-in user ever sees. */}
       <AiAssistant />
       <Navbar />
       {/* tabIndex=-1: focusable as the skip link's jump target without

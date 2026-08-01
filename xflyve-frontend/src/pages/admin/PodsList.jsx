@@ -22,7 +22,6 @@ import { alpha } from "@mui/material/styles";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import CloseIcon from "@mui/icons-material/Close";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DownloadIcon from "@mui/icons-material/Download";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
@@ -761,7 +760,7 @@ const AdminPODs = () => {
                       <Typography variant="body2" sx={{ color: palette.muted }}>
                         Driver: {driverName(pod.driverId)}
                       </Typography>
-                      <Box sx={{ mt: 1 }}>{statusChip(pod.status)}</Box>
+                      <Box sx={{ mt: 0.5 }}>{statusChip(pod.status)}</Box>
                       <Typography
                         variant="body2"
                         sx={{ color: palette.muted, mt: 0.5 }}
@@ -771,31 +770,30 @@ const AdminPODs = () => {
                       <PreviewHint />
                     </Box>
                   </Stack>
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1}
-                    sx={{ minWidth: { sm: 220 } }}
-                  >
+                  <Stack direction="row" spacing={1}>
                     <Button
-                      fullWidth
+                      size="small"
                       variant="contained"
-                      startIcon={<DownloadIcon />}
                       onClick={() => handleDownload(pod)}
                       sx={{
                         borderRadius: 3,
                         bgcolor: palette.ink,
-                        fontWeight: 900,
+                        fontWeight: 800,
+                        width: 100,
                       }}
                     >
                       Download
                     </Button>
                     <Button
-                      fullWidth
+                      size="small"
                       variant="outlined"
                       color="error"
-                      startIcon={<DeleteOutlineIcon />}
                       onClick={() => handleDelete(pod._id)}
-                      sx={{ borderRadius: 3, fontWeight: 900 }}
+                      sx={{
+                        borderRadius: 3,
+                        fontWeight: 800,
+                        width: 100,
+                      }}
                     >
                       Delete
                     </Button>

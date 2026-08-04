@@ -120,4 +120,47 @@ describe("Flow: download-work-diaries is scoped by workDate, falling back to upl
     expect(res.status).toBe(200);
     expect(res.body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   });
+
+  test("PASS: dateFrom + dateTo + driverId together (the exact admin UI request shape) hit the real route through real auth and return a ZIP, not 404", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const targetDriver = await createDriver({ role: "driver", name: "Target" });
+    const otherDriver = await createDriver({ role: "driver", name: "Other" });
+
+    await WorkDiary.create({
+      driverId: targetDriver._id,
+      fileUrl: "https://cloudinary.example/target.pdf",
+      workDate: new Date("2026-07-10T00:00:00.000Z"),
+      uploadDate: new Date("2026-07-10T00:00:00.000Z"),
+    });
+    // A diary in the same date range but for a different driver — proves
+    // driverId actually scopes the query rather than the range alone
+    // happening to match.
+    await WorkDiary.create({
+      driverId: otherDriver._id,
+      fileUrl: "https://cloudinary.example/other.pdf",
+      workDate: new Date("2026-07-10T00:00:00.000Z"),
+      uploadDate: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, body: fakePdfBody() });
+
+    const res = await request(app)
+      .get("/api/admin/download-work-diaries")
+      .set("Authorization", authHeader(admin))
+      .query({ dateFrom: "2026-07-10", dateTo: "2026-07-10", driverId: targetDriver._id.toString() })
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/zip");
+    expect(res.body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    // Only the target driver's file was fetched — the other driver's diary
+    // (same date range) was correctly excluded by the driverId filter.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith("https://cloudinary.example/target.pdf");
+  });
 });

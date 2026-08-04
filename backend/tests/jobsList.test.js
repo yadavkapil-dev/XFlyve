@@ -116,7 +116,7 @@ describe("GET /api/jobs (getAllJobs) — pagination/filter/sort", () => {
     const res = makeResponse();
     await controller.getAllJobs({ query: { sort: "password" } }, res);
 
-    expect(chain.sort).toHaveBeenCalledWith({ jobDate: 1 });
+    expect(chain.sort).toHaveBeenCalledWith({ jobDate: -1 });
   });
 
   test("filter: status", async () => {

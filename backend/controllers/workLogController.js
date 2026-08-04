@@ -213,6 +213,7 @@ exports.getLogsByDriver = async (req, res) => {
 
   try {
     const logs = await DailyWorkLog.find({ driverId })
+      .sort(WORKLOG_DEFAULT_SORT)
       .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType");
     return res.status(200).json({
       success: true,
@@ -239,6 +240,7 @@ exports.getMyLogs = async (req, res) => {
 
   try {
     const logs = await DailyWorkLog.find({ driverId })
+      .sort(WORKLOG_DEFAULT_SORT)
       .populate("jobIds", "title pickupLocation deliveryLocation jobDate status jobType");
     return res.status(200).json({
       success: true,

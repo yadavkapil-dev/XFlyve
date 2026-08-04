@@ -12,7 +12,7 @@ const {
 
 router.use(authMiddleware);
 
-router.get("/", truckController.getAllTrucks);
+router.get("/", requireAdmin, truckController.getAllTrucks);
 
 router.post(
   "/",

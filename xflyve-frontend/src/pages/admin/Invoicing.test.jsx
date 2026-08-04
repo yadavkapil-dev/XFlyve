@@ -2,12 +2,14 @@
 // else — loading state, empty state, and the list itself — runs for real
 // against the real component.
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import Invoicing from "./Invoicing";
-import { getJobsReadyForInvoicing } from "../../api";
+import { getJobsReadyForInvoicing, updateJob } from "../../api";
 
 vi.mock("../../api", () => ({
   getJobsReadyForInvoicing: vi.fn(),
+  updateJob: vi.fn(),
 }));
 
 const job = (overrides = {}) => ({
@@ -78,5 +80,64 @@ describe("Invoicing — Ready to invoice page", () => {
     render(<Invoicing />);
 
     expect(await screen.findByText("Server error loading invoice-ready jobs")).toBeInTheDocument();
+  });
+
+  describe("Mark as Invoiced", () => {
+    test("PASS: clicking the row button opens a confirmation dialog without calling updateJob yet", async () => {
+      getJobsReadyForInvoicing.mockResolvedValue({ data: { data: [job()] } });
+
+      render(<Invoicing />);
+      await screen.findByText("Sydney to Melbourne freight run");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mark as Invoiced" }));
+
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      expect(updateJob).not.toHaveBeenCalled();
+    });
+
+    test("PASS: canceling the dialog leaves the job in the list and never calls updateJob", async () => {
+      getJobsReadyForInvoicing.mockResolvedValue({ data: { data: [job()] } });
+
+      render(<Invoicing />);
+      await screen.findByText("Sydney to Melbourne freight run");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mark as Invoiced" }));
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(updateJob).not.toHaveBeenCalled();
+      expect(screen.getByText("Sydney to Melbourne freight run")).toBeInTheDocument();
+    });
+
+    test("PASS: confirming calls PUT /jobs/:jobId with invoiceStatus 'invoiced' and removes the job from the list", async () => {
+      getJobsReadyForInvoicing.mockResolvedValue({ data: { data: [job()] } });
+      updateJob.mockResolvedValue({ data: { status: "success" } });
+
+      render(<Invoicing />);
+      await screen.findByText("Sydney to Melbourne freight run");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mark as Invoiced" }));
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Mark as Invoiced" }));
+
+      await waitFor(() => expect(updateJob).toHaveBeenCalledWith("job1", { invoiceStatus: "invoiced" }));
+      await waitFor(() => expect(screen.queryByText("Sydney to Melbourne freight run")).not.toBeInTheDocument());
+      expect(screen.getByText("No jobs are invoice-ready yet.")).toBeInTheDocument();
+    });
+
+    test("PASS: a failed update shows an error and keeps the job in the list", async () => {
+      getJobsReadyForInvoicing.mockResolvedValue({ data: { data: [job()] } });
+      updateJob.mockRejectedValue({ response: { data: { message: "Failed to mark job as invoiced" } } });
+
+      render(<Invoicing />);
+      await screen.findByText("Sydney to Melbourne freight run");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mark as Invoiced" }));
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Mark as Invoiced" }));
+
+      expect(await screen.findByText("Failed to mark job as invoiced")).toBeInTheDocument();
+      expect(screen.getByText("Sydney to Melbourne freight run")).toBeInTheDocument();
+    });
   });
 });

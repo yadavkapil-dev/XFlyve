@@ -284,7 +284,12 @@ const Jobs = () => {
             {jobs.map((job) => {
               const meta = statusMeta(job.status);
               return (
-                <Paper key={job._id} elevation={0} sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}>
+                <Paper
+                  key={job._id}
+                  data-testid={`job-card-${job.title}`}
+                  elevation={0}
+                  sx={{ p: 2, borderRadius: 5, border: "1px solid", borderColor: palette.line, bgcolor: palette.panel }}
+                >
                   <Stack spacing={1.7}>
                     <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
                       <Box minWidth={0}>

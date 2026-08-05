@@ -1,587 +1,141 @@
-# XFlyve — Full-Stack Logistics Workflow Platform
+# XFlyve
 
-XFlyve is a full-stack logistics workflow platform designed to replace spreadsheet-based coordination, WhatsApp messages, phone calls, and paper-based processes used by small transport companies.
+A logistics operations tool for small trucking/transport companies — the kind of business running a handful of trucks and drivers off spreadsheets, group chats, and paper proof-of-delivery slips. XFlyve gives an admin one place to assign jobs to drivers and trucks, track proof-of-delivery documents through an approval step, keep NHVR-relevant compliance records (work diaries, work logs), see what's ready to invoice, and get real-time visibility into what's happening across the fleet — while drivers get a simple mobile-friendly view of their own jobs and paperwork.
 
-It centralises job management, driver workflows, truck assignments, Proof of Delivery documents, work diaries, daily work records, approvals, reporting, and invoice-readiness checks in one role-based web application.
+It is not a TMS/ERP replacement. It doesn't do route optimization, GPS tracking, payroll, or actual invoice generation — see [Known Limitations](#known-limitations--honest-future-improvements) for the deliberate scope boundary.
 
----
+This is a full-stack portfolio/production-readiness project: real auth, real role-based access control, a real CI/CD pipeline with automated tests, and an audited security pass — built to demonstrate how a small operational tool gets built and hardened end-to-end, not to claim adoption or scale it hasn't been tested at.
 
-## Live Demo
+## Architecture overview
 
-- **Frontend:** https://xflyve.vercel.app
-- **Backend API:** https://xflyve.onrender.com
-- **GitHub:** https://github.com/yadavkapil-dev/XFlyve
+- **Frontend** — React 19 (Vite), Material UI v7, React Router v7. Talks to the backend over Axios (REST) and Socket.IO (real-time). Deployed to Vercel.
+- **Backend** — Node.js + Express 5 + Mongoose 8, exposing a REST API. Deployed to Render.
+- **Database** — MongoDB. Local dev runs it via Docker (`docker-compose.yml`, `mongo:6.0`); production points at a real MongoDB deployment via `MONGO_URI`.
+- **File storage** — Cloudinary holds uploaded PDFs (PODs, work diary pages). Uploads go through Multer (in-memory, no disk writes) with a magic-byte check on the actual file bytes (not just the client-supplied MIME type) before ever reaching Cloudinary.
+- **Real-time layer** — Socket.IO, authenticated with the same JWT verification as the REST API. Each connection joins a private room keyed to the server-verified user ID (never client-supplied), so notifications can only ever reach their intended recipient.
+- **AI Assistant** — Backed by a real external LLM via [OpenRouter](https://openrouter.ai) (a free-tier model, called through a plain `fetch` wrapper — no vendor SDK), not a hardcoded/rule-based chatbot. It runs a standard tool-calling loop against six read-only tools that wrap the app's own controllers; the model never sees raw database access, and every tool call is re-validated against the requesting user's real role server-side even if the model tries something it shouldn't.
+- **Email** — [Resend](https://resend.com), used for a handful of transactional emails (password reset, job assigned, POD rejected). Entirely optional and fire-and-forget — the app functions normally with no key configured, it just skips sending.
+- **Observability** — Winston for structured backend logging, Sentry (optional, both frontend and backend) for error monitoring.
 
-> The backend is hosted on Render and may take a short time to start after a period of inactivity.
+## Core features
 
----
+**Jobs lifecycle** — Admin creates a job (title, pickup/delivery, driver, truck, date, local/interstate type), assigns it to a driver and a truck for that day (with atomic double-booking protection — a truck can't be assigned to two jobs on the same day, enforced at the database level via a unique index, not just application logic). The driver starts and completes the job from their own view. Every transition (created, assigned, started, completed) is logged to a per-job activity trail and triggers an in-app notification.
 
-## The Problem
+**Proof of Delivery (PODs)** — Driver uploads a PDF POD tied to a job. Admin reviews and approves or rejects it. Approved PODs feed directly into invoice readiness. Rejected ones notify the driver (in-app and by email) so they know to redo it.
 
-Before XFlyve, daily transport operations relied heavily on:
+**Work Diary** — Interstate-jobs-only PDF logbook pages (NHVR fatigue/compliance records), uploaded by the driver, filtered and downloadable by an admin by date range and/or driver. There is no approval workflow for these — a submitted diary is just a record on file, not something that gets approved or rejected. Date filtering is scoped to the actual trip date, not the (possibly later) upload date, so a diary uploaded a few days late for an earlier trip still shows up correctly in a compliance-date lookup.
 
-- WhatsApp messages and phone calls
-- Manually updated spreadsheets
-- Paper-based driver records
-- POD documents shared informally as images
-- Repeated follow-ups with drivers
-- No central system for tracking job progress
-- Manual checks before jobs could be invoiced
+**Work Logs** — A structured daily entry (hours/km for local jobs, start/end odometer readings for interstate jobs) the driver fills in themselves, tied to a specific job. Like Work Diary, there is no approval workflow — this was a deliberate simplification; a submitted log is just a record.
 
-This made it difficult to understand which jobs were pending, in progress, completed, missing documentation, or ready for invoicing.
+**Invoicing readiness** — A job is "ready to invoice" once it's marked completed and has at least one approved POD (work diaries/logs don't gate this — only the POD does). The Invoicing page lists these jobs with a single "Mark as Invoiced" action per job: a confirmation dialog, then a `PUT /api/jobs/:jobId { invoiceStatus: "invoiced" }` call that removes it from the ready list. This is a status flag, not an invoicing feature — it does not calculate amounts, generate a document, or send anything to anyone.
 
----
+**Real-time notifications** — Job assignment/updates, POD submission/approval/rejection, work diary/log submission, and job start/completion all push a live in-app notification over Socket.IO to the right recipient (drivers see their own; admin-relevant events fan out to every active admin). No email digest or push notifications — in-app only, plus the few transactional emails noted above.
 
-## The Solution
+**AI Assistant** — A chat widget (both landing page and inside the app) backed by a real LLM with six role-gated, read-only tools: today's jobs (driver), available trucks, pending POD approvals (admin), rejected documents (admin — PODs only, since diaries/logs have no rejection concept to query), invoice-ready jobs (admin), and a daily operations summary (admin). No conversation memory across requests, no streaming, no write/mutation tools — it can look things up, not change anything.
 
-XFlyve provides one internal platform with separate workflows for administrators and drivers.
+**Activity audit trail** — Every job-related action (created, assigned, started, completed, POD submitted/approved/rejected, diary/log submitted) is logged to an append-only, write-once collection and shown as a per-job timeline on the admin Jobs page. Admin-only; there's no cross-job activity feed, just the one job you're looking at.
 
-Administrators can create and assign jobs, manage drivers and trucks, review uploaded documents, track progress, and determine whether completed jobs are ready for invoicing.
+**Security** — JWT bearer-token auth (7-day tokens, no refresh rotation — see limitations), bcrypt password hashing (cost factor 12), role-based access control (`admin`/`driver`, enforced both at the route-middleware level and again inside controllers for per-resource ownership), a magic-byte file-signature check on uploads (not just trusting the client's declared MIME type), Helmet security headers, a configurable CORS whitelist, and layered rate limiting — a general per-IP limit, a stricter one on login/password-reset routes, and a per-user limit on the AI chat endpoint (protecting the shared OpenRouter quota, not the IP).
 
-Drivers can log in, view only their assigned work, update job progress, upload Proof of Delivery documents, submit work diaries, and record daily work information.
+**CI/CD** — GitHub Actions runs on every push/PR to `main` and `production-readiness`: backend unit + integration tests (against an isolated in-memory MongoDB, never a real database), frontend lint + unit tests + production build, one full Playwright end-to-end workflow test (admin creates a job → driver starts/completes it → uploads a POD → admin approves it → invoice-ready), then a Docker build for both services. On an actual push to `main`, it triggers real deploys (Render for the backend, Vercel for the frontend) and polls both until they're confirmed healthy before finishing.
 
----
+## Setup / running locally
 
-## Core Features
-
-### Administrator Features
-
-- Create, update, archive, and manage jobs
-- Assign drivers and trucks
-- Manage driver accounts
-- Manage trucks and daily truck assignments
-- Track job status from one dashboard
-- Review Proof of Delivery submissions
-- Approve or reject POD documents
-- Review and approve work diaries
-- Review daily work records
-- View jobs that meet invoice-readiness requirements
-- Export operational information using Excel and ZIP tools
-- Access role-protected administration routes
-
-### Driver Features
-
-- Secure login and protected dashboard
-- View assigned jobs
-- View assigned truck and delivery information
-- Start and complete jobs
-- Upload Proof of Delivery documents
-- Submit compliance work diaries
-- Submit daily work records
-- View previous submissions and approval status
-- Access only records associated with the authenticated driver
-
----
-
-## Job Workflow
-
-Jobs follow a controlled lifecycle:
-
-```txt
-Pending → In Progress → Completed
-```
-
-The backend prevents invalid transitions, including:
-
-- Pending directly to Completed
-- Completed back to Pending
-- Completed back to In Progress
-- In Progress back to Pending
-
-The system also records:
-
-- `startedAt` when work begins
-- `completedAt` when work is completed
-
-These rules are enforced on the backend rather than relying only on the user interface.
-
----
-
-## Invoice-Readiness Rules
-
-XFlyve evaluates whether a completed job contains the documents required for invoicing.
-
-### Local Jobs
-
-A local job is ready for invoicing when:
-
-- The job is completed
-- The job is not archived
-- An approved Proof of Delivery exists
-
-### Interstate Jobs
-
-An interstate job is ready for invoicing when:
-
-- The job is completed
-- The job is not archived
-- An approved Proof of Delivery exists
-- An approved compliance work diary exists
-
-XFlyve currently determines invoice readiness; it does not generate financial invoices.
-
----
-
-## Proof of Delivery Workflow
-
-1. The driver completes a delivery.
-2. The driver uploads the Proof of Delivery.
-3. The backend confirms that the job belongs to the authenticated driver.
-4. The file is uploaded to Cloudinary.
-5. An administrator reviews the submission.
-6. The administrator approves or rejects the document.
-7. Approved records are protected from further driver modification.
-
-The backend derives the driver identity from the authenticated JWT instead of trusting a driver ID supplied by the frontend.
-
----
-
-## Work Diary Workflow
-
-Work diaries are primarily used for interstate jobs.
-
-The backend verifies that:
-
-- The authenticated driver owns the selected job
-- The job is an interstate job
-- The uploaded file meets the configured requirements
-
-Administrators can approve or reject submitted work diaries. Approved records are locked from driver editing or deletion.
-
----
-
-## Tech Stack
-
-### Frontend
-
-- React
-- Vite
-- Material UI
-- React Router
-- Axios
-- Context API
-
-### Backend
-
-- Node.js
-- Express.js
-- REST APIs
-- MongoDB
-- Mongoose
-- JWT Authentication
-- Role-Based Access Control
-
-### File Storage
-
-- Cloudinary
-- Multer memory storage
-
-### Security and Middleware
-
-- Helmet
-- CORS whitelist
-- Rate limiting
-- Compression
-- Morgan
-- Input validation
-- Centralised error handling
-- Ownership checks
-- File type and size restrictions
-
-### Logging and Testing
-
-- Winston
-- Jest
-- Supertest
-- Artillery
-
-### DevOps and Deployment
-
-- Docker
-- GitHub Actions
-- Vercel
-- Render
-- MongoDB Atlas
-
----
-
-## Architecture
-
-XFlyve uses a separated frontend and backend architecture.
-
-```txt
-React Frontend
-      │
-      │ HTTPS / JSON
-      ▼
-Express REST API
-      │
-      ├── Authentication Middleware
-      ├── Role and Ownership Checks
-      ├── Controllers and Business Rules
-      ├── Cloudinary File Uploads
-      │
-      ▼
-MongoDB Atlas
-```
-
-The backend follows an MVC-style structure:
-
-- **Models** define MongoDB schemas
-- **Controllers** contain request handling and business logic
-- **Routes** map endpoints to controllers
-- **Middleware** handles authentication, authorisation, validation, and errors
-- **Utilities** contain reusable supporting functions
-
----
-
-## Main Data Models
-
-- Driver / Administrator
-- Job
-- Truck
-- Daily Truck Assignment
-- Job POD
-- Work Diary
-- Daily Work Log
-
----
-
-## Project Structure
-
-### Backend
-
-```txt
-backend/
-├── config/
-├── controllers/
-├── middlewares/
-├── models/
-├── routes/
-├── scripts/
-├── tests/
-├── utils/
-├── Dockerfile
-├── package.json
-└── server.js
-```
-
-### Frontend
-
-```txt
-xflyve-frontend/
-├── public/
-├── src/
-│   ├── api/
-│   ├── components/
-│   ├── contexts/
-│   ├── layouts/
-│   ├── pages/
-│   └── utils/
-├── index.html
-├── package.json
-└── vite.config.js
-```
-
----
-
-## Environment Variables
-
-Create a `.env` file inside the backend directory.
-
-### Backend `.env`
-
-```env
-PORT=3001
-NODE_ENV=development
-
-MONGO_URI=
-JWT_SECRET=
-
-FRONTEND_URL=http://localhost:5173
-CORS_WHITELIST=http://localhost:5173
-
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-```
-
-Create a `.env` file inside the frontend directory.
-
-### Frontend `.env`
-
-```env
-VITE_API_URL=http://localhost:3001/api
-```
-
-Do not commit real credentials or secrets to GitHub.
-
----
-
-## Running Locally
-
-### 1. Clone the Repository
+**Requirements:** Node.js ≥18, a MongoDB instance (local via Docker, or your own).
 
 ```bash
-git clone https://github.com/yadavkapil-dev/XFlyve.git
-cd XFlyve
-```
+git clone <this-repo>
+cd Xflyve
 
-### 2. Start the Backend
-
-```bash
+# Backend
 cd backend
 npm install
-npm run start
-```
+cp .env.example .env   # then fill in the values below
+npm run dev            # starts on http://localhost:3001
 
-For development with automatic server restarts:
-
-```bash
-npm run dev
-```
-
-The backend will run on:
-
-```txt
-http://localhost:3001
-```
-
-### 3. Start the Frontend
-
-Open a second terminal:
-
-```bash
+# Frontend (separate terminal)
 cd xflyve-frontend
 npm install
-npm run dev
+cp .env.example .env   # VITE_API_URL should already point at the backend above
+npm run dev             # starts on http://localhost:5173
 ```
 
-The frontend will run on:
+Optional: `docker-compose up` at the repo root spins up MongoDB + both services in containers instead.
 
-```txt
-http://localhost:5173
-```
+### Environment variables
 
-### Production Frontend Build
+**Backend (`backend/.env`):**
 
-```bash
-npm run build
-npm run preview
-```
-
----
-
-## Running with Docker
-
-From the backend directory:
-
-```bash
-docker build -t xflyve-backend .
-docker run --env-file .env -p 3001:3001 xflyve-backend
-```
-
-Ensure the required MongoDB, JWT, frontend URL, and Cloudinary environment variables are configured.
-
----
-
-## Testing
-
-The backend uses Jest and Supertest for automated API and workflow testing.
-
-Run the test suite:
-
-```bash
-cd backend
-npm test
-```
-
-Run the job workflow tests:
-
-```bash
-npx jest tests/jobWorkflow.test.js
-```
-
-The workflow tests cover:
-
-- Valid job-status transitions
-- Invalid transition rejection
-- Driver ownership checks
-- Start and completion timestamps
-- POD approval requirements
-- Interstate diary requirements
-- Invoice-readiness rules
-- Prevention of direct pending-to-completed updates
-
----
-
-## Load Testing
-
-Artillery is used to test API behaviour under simulated traffic.
-
-```bash
-npx artillery run <load-test-file>.yml
-```
-
-Replace `<load-test-file>` with the path to the Artillery configuration in the repository.
-
----
-
-## CI/CD
-
-GitHub Actions (`.github/workflows/ci-cd.yml`) runs on every push and pull
-request to `main` and `production-readiness`:
-
-1. **Backend tests** — install, unit tests, then integration tests against an
-   isolated in-memory MongoDB (`mongodb-memory-server`, via
-   `backend/tests/integration/testDb.js`) — never a real Atlas connection.
-2. **Frontend tests + build** — install, ESLint, Vitest, production build.
-   (The backend has no ESLint configured yet, so backend lint isn't part of
-   this pipeline — a known gap, not an oversight.)
-3. **Docker build** — builds both images on every run (validating the
-   Dockerfiles); on an actual push, also pushes them to Docker Hub tagged
-   with both `latest` and the triggering commit SHA.
-4. **Deploy** — only on a push to `main` (never PRs, never
-   `production-readiness`), and only after the three jobs above succeed:
-   triggers Render's deploy hook for the backend, polls `/healthz` until it
-   reports healthy, then triggers Vercel's deploy hook for the frontend and
-   confirms it's reachable.
-
-Deployment is intentionally gated behind CI passing — see below for what
-that requires in the Render/Vercel dashboards, and required GitHub secrets.
-
-### Required GitHub secrets
-
-| Secret | Used for | Where to get it |
+| Variable | Required? | Notes |
 |---|---|---|
-| `DOCKER_USERNAME` / `DOCKER_PASSWORD` | Pushing Docker images | Docker Hub account (already configured previously) |
-| `RENDER_DEPLOY_HOOK_URL` | Triggering a backend deploy | Render dashboard → backend service → Settings → **Deploy Hook** |
-| `VERCEL_DEPLOY_HOOK_URL` | Triggering a frontend deploy | Vercel dashboard → project → Settings → Git → **Deploy Hooks** (create one for the `main` branch) |
+| `MONGO_URI` | Always | App won't start without it |
+| `JWT_SECRET` | Always | App won't start without it |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Production only | Optional for local dev — POD/diary uploads just won't work without them |
+| `CORS_WHITELIST` and/or `FRONTEND_URL` | Production only | At least one required so the deployed frontend can call the API |
+| `OPENROUTER_API_KEY` | **Effectively required for the AI Assistant** | **Not currently listed in `.env.example` — this is a known gap.** Without it, every AI Assistant request fails (gracefully — no crash, just no useful reply); everything else in the app works fine. |
+| `RESEND_API_KEY` | Optional | Also not in `.env.example`. Without it, transactional emails are silently skipped — the app degrades gracefully. |
+| `PORT` | Optional | Defaults to `3001` |
+| `NODE_ENV` | Optional | Defaults to `development` |
+| `LOG_LEVEL` | Optional | Defaults to `info` |
+| `SENTRY_DSN` / `SENTRY_TRACES_SAMPLE_RATE` | Optional | Sentry fully disabled if unset |
 
-### Turning off Render/Vercel's own auto-deploy
+**Frontend (`xflyve-frontend/.env`):**
 
-Both platforms can deploy independently of this pipeline whenever they see a
-new push, via their native GitHub integration. For the CI gate above to
-actually mean anything (not just race against an independent deploy),
-auto-deploy needs to be turned off in both dashboards, leaving the deploy
-hooks above as the only way a deploy happens:
+| Variable | Required? | Notes |
+|---|---|---|
+| `VITE_API_URL` | Yes | Backend API base URL |
+| `VITE_SENTRY_DSN` / `VITE_SENTRY_TRACES_SAMPLE_RATE` | Optional | Sentry fully disabled if unset |
 
-- **Render**: backend service → Settings → **Auto-Deploy** → set to *No* (or *Off*).
-- **Vercel**: project → Settings → Git → confirm the connected branch, then
-  disable auto-deploy for it (via an *Ignored Build Step* that always exits
-  non-zero, or the project's auto-deploy toggle if your plan exposes one
-  directly) — deploys still happen, but only when the deploy hook is called.
+### Running tests
 
-The frontend is deployed to Vercel, the backend to Render.
-
----
-
-## Rollback
-
-Both Render and Vercel keep every previous deploy addressable, so rolling
-back doesn't require reverting code first.
-
-**Backend (Render)**
-1. Render dashboard → backend service → **Events** (or **Deploys**) tab.
-2. Find the last deploy known to be good, identified by its commit message/SHA.
-3. Click **Redeploy** (or **Rollback to this deploy**) on that entry.
-4. Confirm it's healthy: `curl https://xflyve.onrender.com/healthz`.
-
-**Frontend (Vercel)**
-1. Vercel dashboard → project → **Deployments** tab.
-2. Find the last deployment known to be good (each is listed with its commit SHA).
-3. Open its "..." menu → **Promote to Production** — this repoints the
-   production domain at that exact previous build immediately, no rebuild
-   needed.
-4. Confirm: visit https://xflyve.vercel.app.
-
-**Git-based alternative (backend)**: `git revert <bad-commit-sha>` and push
-to `main` — since deploy is gated on CI, the revert redeploys automatically
-once the pipeline passes, no dashboard clicks needed.
-
-**Docker images**: every CI run on a push tags both images with the
-triggering commit SHA (not just `latest`), pushed to Docker Hub. To recover
-the exact image behind a specific past deploy: `docker pull
-<username>/xflyve-backend:<commit-sha>` (find the SHA from `git log` or the
-GitHub Actions run history) — useful for inspecting or running that exact
-build locally, even though Render/Vercel build from source rather than
-pulling these images directly.
-
----
-
-## Screenshots
-
-Add screenshots to a folder such as:
-
-```txt
-docs/screenshots/
+```bash
+cd backend && npm test              # unit + integration, with coverage
+cd xflyve-frontend && npm test      # vitest
+cd e2e && npm test                  # Playwright, boots its own backend+frontend+DB
 ```
 
-Then add them here:
+## Known limitations / honest future improvements
 
-```md
-![Admin Dashboard](docs/screenshots/admin-dashboard.png)
-![Job Management](docs/screenshots/job-management.png)
-![Driver Dashboard](docs/screenshots/driver-dashboard.png)
-![POD Approval](docs/screenshots/pod-approval.png)
-![Invoice Readiness](docs/screenshots/invoice-readiness.png)
-```
+**Security**
+- **No refresh-token rotation** — a single 7-day JWT, no refresh flow, no session management, no MFA/SSO. This was a deliberate scope decision during the security-hardening pass, not an oversight, but it's a real gap for anything beyond a small trusted team.
+- **`exportDriversExcel` (admin Excel export) and `backend/scripts/exportUsersCsv.js` both export every account regardless of role** — since driver and admin accounts share one Mongoose collection, both currently include admin accounts (and, for the Excel export, archived drivers) in what's meant to be a drivers-only export. The equivalent list endpoint (`getAllDrivers`) already filters correctly; these two didn't get the same fix. Confirmed still present as of this write-up.
+- Backend has no ESLint configured (frontend does). Known, not yet addressed.
 
----
+**Pagination gaps** — a few endpoints return their entire result set with no paging, which is fine at small scale but won't stay fine indefinitely:
+- A driver's own jobs and own work logs (`getMyJobs`, `getAssignedJobs`, `getMyLogs`, `getLogsByDriver`)
+- Truck assignment history (`getAllAssignments`)
+- The in-app notification list is capped at the newest 20 per session client-side (the backend supports real pagination; the frontend just doesn't call for more)
 
-## Outcome
+**By design, not gaps:**
+- **No invoicing or payroll calculation.** "Mark as Invoiced" is a status flag an admin sets manually — XFlyve doesn't compute amounts, generate an invoice document, or integrate with any accounting system.
+- **No multi-tenant support.** This is a single-company tool — there's no concept of separate organizations sharing one deployment. Every admin sees every driver, job, and truck in the database.
+- **No GPS/live location tracking, no route planning/optimization.**
 
-XFlyve replaced fragmented logistics processes with a centralised workflow platform.
+**Other confirmed-current gaps:**
+- `Job.podUrl` is a dead schema field — fully superseded by the `Job.podIds` → `JobPod` relationship, but never removed.
+- `Truck.assignedDriver` is backend-wired (readable/writable via the API) but the frontend never uses it — real driver-to-truck assignment happens entirely through the separate daily `TruckAssignment` collection instead.
+- The Activity audit trail has no cross-job/admin-wide view — only a per-job timeline.
 
-The system provides:
+## Tech stack
 
-- Centralised job tracking
-- Clear admin and driver responsibilities
-- Faster access to delivery documentation
-- Structured approval workflows
-- Better visibility into job progress
-- Reduced dependence on spreadsheets and WhatsApp
-- Consistent checks before invoicing
-- More reliable operational records
+**Backend:** Node.js, Express 5, Mongoose 8 (MongoDB), JWT (`jsonwebtoken`), `bcryptjs`, Helmet, `express-rate-limit`, `express-validator`, Multer, Cloudinary SDK, Socket.IO, Winston, `@sentry/node`, Resend, ExcelJS, `archiver`, Swagger (`swagger-ui-express`) for API docs. AI Assistant integration is a hand-written `fetch` wrapper around OpenRouter's chat-completions API (no vendor SDK). Tested with Jest, Supertest, and `mongodb-memory-server`.
 
----
+**Frontend:** React 19, Vite 7, React Router 7, Material UI 7 (+ Emotion, `@mui/x-charts`, `@mui/x-date-pickers`), Axios, Socket.IO client, `dayjs`, `@sentry/react`. Tested with Vitest and React Testing Library; linted with ESLint 9 (flat config) including `eslint-plugin-jsx-a11y`.
+
+**End-to-end:** Playwright, run against a real (isolated, in-memory) backend and a real Vite dev server.
+
+**Infra:** Docker (multi-stage builds, non-root containers, healthchecks) for both services; `docker-compose` for local dev. Render (backend) + Vercel (frontend) in production, deployed via GitHub Actions on push to `main`, gated behind the full test suite passing first.
 
 ## What I Learned
 
-Building XFlyve strengthened my understanding of:
+Building and hardening XFlyve reinforced:
 
-- Designing software around real business workflows
-- Translating operational problems into technical requirements
-- Full-stack application architecture
-- REST API design
-- MongoDB schema design
-- Authentication and authorisation
-- Role-based and ownership-based access control
-- File handling and cloud storage
-- Backend business-rule enforcement
-- Automated workflow testing
-- Application security
-- Docker and CI/CD
-- Cloud deployment and environment configuration
-
----
-
-## Future Improvements
-
-- Multi-company SaaS tenancy
-- Real-time notifications
-- GPS and driver-location tracking
-- Route planning and optimisation
-- Payroll and driver-payment workflows
-- Full invoice generation
-- Audit logs
-- Refresh-token authentication
-- Improved monitoring and observability
-- Expanded automated test coverage
-- Mobile application support
-- AI-assisted dispatch and operational reporting
-
----
+- Designing role-based access control that holds up under scrutiny — not just gating routes by role, but checking resource ownership inside controllers, and actually finding (and fixing) the one admin route that had been missed.
+- The difference between "the feature works" and "the feature is safe" — validating uploaded files by their actual bytes instead of a client-supplied MIME type, and scoping rate limits to what's genuinely worth protecting (a shared AI provider quota, not just an IP address).
+- Real-time features done properly — Socket.IO rooms keyed to server-verified identity rather than anything a client could spoof.
+- Integrating an LLM without making it a trust boundary — tool-calling restricted to read-only, role-gated functions that re-check the caller's real permissions server-side on every call.
+- Writing tests that catch real regressions instead of just passing — tracing an end-to-end test failure back to a legitimate, correct backend change elsewhere, rather than assuming the fix was the bug.
+- Keeping documentation honest over time — auditing this README against the actual current code before rewriting it, instead of letting stale claims sit uncorrected.
 
 ## Author
 
@@ -590,9 +144,3 @@ Building XFlyve strengthened my understanding of:
 - Portfolio: https://kapilyadav.dev
 - LinkedIn: https://linkedin.com/in/yadav-kapil
 - GitHub: https://github.com/yadavkapil-dev
-
----
-
-## Disclaimer
-
-XFlyve is a portfolio and internal workflow project created to demonstrate full-stack software engineering, logistics-domain understanding, workflow automation, and modern web application development.

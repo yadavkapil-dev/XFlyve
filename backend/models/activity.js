@@ -10,11 +10,7 @@ const ACTIVITY_ACTIONS = [
   "POD_APPROVED",
   "POD_REJECTED",
   "DIARY_SUBMITTED",
-  "DIARY_APPROVED",
-  "DIARY_REJECTED",
   "WORK_LOG_SUBMITTED",
-  "WORK_LOG_APPROVED",
-  "WORK_LOG_REJECTED",
 ];
 
 const RESOURCE_TYPES = ["job", "jobpod", "workdiary", "worklog"];

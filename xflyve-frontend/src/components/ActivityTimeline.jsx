@@ -19,11 +19,7 @@ const ACTION_LABELS = {
   POD_APPROVED: "approved a proof of delivery",
   POD_REJECTED: "rejected a proof of delivery",
   DIARY_SUBMITTED: "submitted a work diary",
-  DIARY_APPROVED: "approved a work diary",
-  DIARY_REJECTED: "rejected a work diary",
   WORK_LOG_SUBMITTED: "submitted a daily work log",
-  WORK_LOG_APPROVED: "approved a daily work log",
-  WORK_LOG_REJECTED: "rejected a daily work log",
 };
 
 const describeActivity = (activity) => {

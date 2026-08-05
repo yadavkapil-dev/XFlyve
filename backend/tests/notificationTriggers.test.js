@@ -467,7 +467,8 @@ describe("Trigger: work diary upload", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workLogController: create -> notifyAdmins, approve/reject -> notifyUser
+// workLogController: create -> notifyAdmins. Work logs have no approval/
+// rejection concept, so there is no approve/reject notification to test.
 // ---------------------------------------------------------------------------
 describe("Trigger: work log create", () => {
   const loadController = () => {

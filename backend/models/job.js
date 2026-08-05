@@ -87,9 +87,6 @@ const jobSchema = new mongoose.Schema(
     completedAt: {
       type: Date,
     },
-    podUrl: {
-      type: String,
-    },
     jobType: {
       type: String,
       enum: ["interstate", "local"],
@@ -115,14 +112,6 @@ jobSchema.index({ assignedTruck: 1, status: 1 });
 // Phase 4: admin job list (getAllJobs) — Job.find({ recordStatus: {$ne} }).sort({ jobDate }), hit on every
 // paginated admin Jobs page load. Confirmed via explain() this was a COLLSCAN without this index.
 jobSchema.index({ recordStatus: 1, jobDate: 1 });
-
-jobSchema.virtual("assignedDriver").get(function () {
-  return this.assignedTo;
-});
-
-jobSchema.virtual("assignedDriver").set(function (value) {
-  this.assignedTo = value;
-});
 
 jobSchema.methods.hasApprovedPod = async function () {
   const JobPod = mongoose.model("JobPod");

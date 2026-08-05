@@ -461,7 +461,8 @@ describe("Activity: work diary upload", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workLogController: WORK_LOG_SUBMITTED / WORK_LOG_APPROVED / WORK_LOG_REJECTED
+// workLogController: WORK_LOG_SUBMITTED — work logs have no approval/
+// rejection concept, so there is no APPROVED/REJECTED activity to test.
 // ---------------------------------------------------------------------------
 describe("Activity: work log create", () => {
   const loadController = () => {

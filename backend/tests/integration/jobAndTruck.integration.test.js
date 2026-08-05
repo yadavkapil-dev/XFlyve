@@ -199,6 +199,65 @@ describe("Flow: Truck consistency", () => {
     expect(finalTruck.assignedJob).toBeNull();
   });
 
+  test("PASS: an admin directly setting status to 'completed' on an in-progress job releases the truck (was previously left stuck 'on-route')", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck({ status: "available" });
+    const job = await createJob({ assignedTo: driver, assignedTruck: truck, status: "pending" });
+
+    // Driver starts it first, claiming the truck for real — the bug this
+    // guards against only shows up once a truck is actually "on-route".
+    await request(app)
+      .put(`/api/jobs/${job._id}`)
+      .set("Authorization", authHeader(driver))
+      .send({ status: "in-progress" });
+
+    const midTruck = await Truck.findById(truck._id).lean();
+    expect(midTruck.status).toBe("on-route");
+
+    const res = await request(app)
+      .put(`/api/jobs/${job._id}`)
+      .set("Authorization", authHeader(admin))
+      .send({ status: "completed" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe("completed");
+
+    const finalTruck = await Truck.findById(truck._id).lean();
+    expect(finalTruck.status).toBe("available");
+    expect(finalTruck.assignedJob).toBeNull();
+
+    const persistedJob = await Job.findById(job._id).lean();
+    expect(persistedJob.completedAt).toBeInstanceOf(Date);
+  });
+
+  test("PASS: an admin directly setting status to 'completed' on a pending job claims then releases the truck, leaving it available", async () => {
+    const admin = await createDriver({ role: "admin" });
+    const driver = await createDriver({ role: "driver" });
+    const truck = await createTruck({ status: "available" });
+    const job = await createJob({ assignedTo: driver, assignedTruck: truck, status: "pending" });
+
+    const res = await request(app)
+      .put(`/api/jobs/${job._id}`)
+      .set("Authorization", authHeader(admin))
+      .send({ status: "completed" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe("completed");
+
+    // The truck must end up available, not skipped-over/untouched (the
+    // pre-fix bug) and not stuck "on-route" either.
+    const finalTruck = await Truck.findById(truck._id).lean();
+    expect(finalTruck.status).toBe("available");
+    expect(finalTruck.assignedJob).toBeNull();
+
+    // The activity/timestamp trail should still show the job passing
+    // through "in-progress", not silently skipping it.
+    const persistedJob = await Job.findById(job._id).lean();
+    expect(persistedJob.startedAt).toBeInstanceOf(Date);
+    expect(persistedJob.completedAt).toBeInstanceOf(Date);
+  });
+
   test("PASS: an admin cannot double-book the same truck on the same date (truck-conflict business rule)", async () => {
     const admin = await createDriver({ role: "admin" });
     const driverA = await createDriver({ role: "driver" });

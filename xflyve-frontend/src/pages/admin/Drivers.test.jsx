@@ -1,9 +1,8 @@
 // Admin Drivers page: the api module (network boundary) is mocked. Covers
 // the removal of driverType/deliveryRate/abn/payType (unused profile
-// fields), the demo/seed-driver toggle (getPublicDrivers/show-all-drivers),
-// the removal of Search/Status filtering and pagination (plain list of all
-// drivers now), and the archive-not-delete wording fix — the page should
-// look intentionally simplified, not just missing pieces.
+// fields), the removal of Search/Status filtering and pagination (plain
+// list of all drivers now), and the archive-not-delete wording fix — the
+// page should look intentionally simplified, not just missing pieces.
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

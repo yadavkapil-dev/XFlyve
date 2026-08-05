@@ -527,6 +527,48 @@ exports.updateJob = async (req, res) => {
       }
     }
 
+    // An admin setting status to "in-progress"/"completed" directly must go
+    // through the same truck-claim/release side effects the driver path
+    // uses (jobTransitionService) — a raw field write here would leave the
+    // truck out of sync (e.g. stuck "on-route" forever if an admin marks an
+    // in-progress job "completed" without ever releasing its truck).
+    // Skipping straight from "pending" to "completed" claims then
+    // immediately releases the truck, so it ends up in the correct final
+    // state and the activity trail still shows the job passing through
+    // "in-progress" rather than silently skipping it. Any other status
+    // value (e.g. an admin correction like completed -> pending, which has
+    // no truck side effect) falls through to the plain field write below,
+    // same as before.
+    const previousJobStatus = job.status;
+    const isSideEffectingStatusChange =
+      status !== undefined &&
+      status !== previousJobStatus &&
+      (status === "in-progress" || status === "completed");
+
+    if (isSideEffectingStatusChange) {
+      const actor = { id: user.id, role: user.role };
+      try {
+        if (status === "in-progress") {
+          if (previousJobStatus !== "pending") {
+            throw new JobTransitionError(`Cannot move a job from ${previousJobStatus} to in-progress`, 409);
+          }
+          await startJob(job, actor);
+        } else if (previousJobStatus === "pending") {
+          await startJob(job, actor);
+          await completeJob(job, actor);
+        } else if (previousJobStatus === "in-progress") {
+          await completeJob(job, actor);
+        } else {
+          throw new JobTransitionError(`Cannot move a job from ${previousJobStatus} to completed`, 409);
+        }
+      } catch (err) {
+        if (err instanceof JobTransitionError) {
+          return res.status(err.statusCode).json({ status: "fail", message: err.message });
+        }
+        throw err;
+      }
+    }
+
     job.title = title !== undefined ? title : job.title;
     job.description = description !== undefined ? description : job.description;
     job.pickupLocation = pickupLocation !== undefined ? pickupLocation : job.pickupLocation;
@@ -542,7 +584,10 @@ exports.updateJob = async (req, res) => {
     job.jobDate = nextJobDate;
     job.startTime = startTime !== undefined ? startTime : job.startTime;
     job.jobType = jobType !== undefined ? jobType : job.jobType;
-    job.status = status !== undefined ? status : job.status;
+    // Already applied via startJob/completeJob above when it was a
+    // side-effecting transition — don't overwrite job.status with the same
+    // value again. Otherwise, a plain field write, same as before.
+    job.status = isSideEffectingStatusChange ? job.status : (status !== undefined ? status : job.status);
 
     await job.save();
 

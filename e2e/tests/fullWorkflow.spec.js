@@ -128,7 +128,13 @@ test("admin creates a job through to invoicing readiness, with the driver comple
 
   await test.step("Verify activity timeline", async () => {
     await adminPage.goto("/jobs");
-    await adminPage.getByRole("button", { name: "Edit" }).first().click();
+    // Scoped to this test's own job card, not just the first "Edit" button
+    // on the page — accessibility.spec.js seeds other jobs into this same
+    // shared backend instance (see playwright.config.js's single webServer),
+    // including one deliberately left incomplete, so ".first()" is not
+    // reliably this test's own job once more than one job exists.
+    const jobCard = adminPage.getByTestId(`job-card-${JOB_TITLE}`);
+    await jobCard.getByRole("button", { name: "Edit" }).click();
 
     await expect(adminPage.getByText("Activity Timeline")).toBeVisible();
     await expect(adminPage.getByText(/created this job/)).toBeVisible();

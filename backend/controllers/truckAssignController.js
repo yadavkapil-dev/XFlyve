@@ -114,6 +114,7 @@ exports.assignTruck = async (req, res) => {
 exports.getAllAssignments = async (req, res) => {
   try {
     const assignments = await TruckAssignment.find()
+      .sort({ date: -1 })
       .populate("truckId")
       .populate("driverId")
       .lean();

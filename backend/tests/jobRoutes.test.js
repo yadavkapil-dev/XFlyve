@@ -12,10 +12,12 @@ const doublePopulatedFindById = (job) => ({
   }),
 });
 
-// getMyJobs does Job.find({...}).populate("assignedTruck",...).lean()
+// getMyJobs/getAssignedJobs do Job.find({...}).sort(...).populate("assignedTruck",...).lean()
 const singlePopulatedFind = (jobs) => ({
-  populate: jest.fn().mockReturnValue({
-    lean: jest.fn().mockResolvedValue(jobs),
+  sort: jest.fn().mockReturnValue({
+    populate: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue(jobs),
+    }),
   }),
 });
 

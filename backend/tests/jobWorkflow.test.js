@@ -815,11 +815,12 @@ describe("Job workflow model", () => {
     });
 
     describe("findReadyForInvoicing", () => {
-      test("queries completed, non-archived jobs with pending/ready invoiceStatus, then keeps only the ones that pass isInvoiceReady", async () => {
+      test("queries completed, non-archived jobs with pending/ready invoiceStatus, sorted by most-recently-completed first, then keeps only the ones that pass isInvoiceReady", async () => {
         const Job = loadJobModel();
         const readyJob = { isInvoiceReady: jest.fn().mockResolvedValue(true) };
         const notReadyJob = { isInvoiceReady: jest.fn().mockResolvedValue(false) };
-        jest.spyOn(Job, "find").mockResolvedValueOnce([readyJob, notReadyJob]);
+        const sortMock = jest.fn().mockResolvedValue([readyJob, notReadyJob]);
+        jest.spyOn(Job, "find").mockReturnValueOnce({ sort: sortMock });
 
         const result = await Job.findReadyForInvoicing();
 
@@ -828,20 +829,21 @@ describe("Job workflow model", () => {
           recordStatus: { $ne: "archived" },
           invoiceStatus: { $in: ["pending", "ready"] },
         });
+        expect(sortMock).toHaveBeenCalledWith({ completedAt: -1 });
         expect(result).toEqual([readyJob]);
       });
 
       test("returns an empty array when no completed job passes isInvoiceReady", async () => {
         const Job = loadJobModel();
         const notReadyJob = { isInvoiceReady: jest.fn().mockResolvedValue(false) };
-        jest.spyOn(Job, "find").mockResolvedValueOnce([notReadyJob]);
+        jest.spyOn(Job, "find").mockReturnValueOnce({ sort: jest.fn().mockResolvedValue([notReadyJob]) });
 
         await expect(Job.findReadyForInvoicing()).resolves.toEqual([]);
       });
 
       test("returns an empty array when no jobs match the base query at all", async () => {
         const Job = loadJobModel();
-        jest.spyOn(Job, "find").mockResolvedValueOnce([]);
+        jest.spyOn(Job, "find").mockReturnValueOnce({ sort: jest.fn().mockResolvedValue([]) });
 
         await expect(Job.findReadyForInvoicing()).resolves.toEqual([]);
       });

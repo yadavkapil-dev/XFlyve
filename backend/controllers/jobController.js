@@ -17,7 +17,7 @@ const { logActivity } = require("../services/activityService");
 const { sendJobAssignedEmail } = require("../services/emailService");
 
 const JOB_SORT_FIELDS = ["jobDate", "createdAt", "status", "title"];
-const JOB_DEFAULT_SORT = { jobDate: 1 };
+const JOB_DEFAULT_SORT = { jobDate: -1 };
 
 const DRIVER_STATUS_TRANSITIONS = {
   pending: "in-progress",
@@ -343,6 +343,7 @@ exports.markJobComplete = async (req, res) => {
 exports.getMyJobs = async (req, res) => {
   try {
     const jobs = await Job.find({ assignedTo: req.user.id, recordStatus: { $ne: "archived" } })
+      .sort(JOB_DEFAULT_SORT)
       .populate("assignedTruck", "truckNumber") // ✅ Added populate here
       .lean();
 
@@ -360,6 +361,7 @@ exports.getAssignedJobs = async (req, res) => {
   try {
     const driverId = req.params.driverId;
     const jobs = await Job.find({ assignedTo: driverId, recordStatus: { $ne: "archived" } })
+      .sort(JOB_DEFAULT_SORT)
       .populate("assignedTruck", "truckNumber") // ✅ Added populate here
       .lean();
 

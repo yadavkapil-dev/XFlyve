@@ -101,7 +101,7 @@ const Jobs = () => {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, limit, sort: "jobDate" };
+      const params = { page, limit, sort: "-jobDate" };
       if (filterDriver) params.assignedTo = filterDriver;
       if (filterDate) {
         params.dateFrom = filterDate;

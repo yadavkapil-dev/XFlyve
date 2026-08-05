@@ -170,7 +170,7 @@ jobSchema.statics.findReadyForInvoicing = async function () {
     status: "completed",
     recordStatus: { $ne: "archived" },
     invoiceStatus: { $in: ["pending", "ready"] },
-  });
+  }).sort({ completedAt: -1 });
 
   const readiness = await Promise.all(
     jobs.map(async (job) => ((await job.isInvoiceReady()) ? job : null))

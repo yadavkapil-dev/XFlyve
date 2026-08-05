@@ -29,7 +29,7 @@ module.exports = {
       summary: "List jobs — paginated, filterable (admin only)",
       security: h.bearer,
       parameters: [
-        h.pageParam, h.limitParam, h.sortParam(["jobDate", "createdAt", "status", "title"], "jobDate"),
+        h.pageParam, h.limitParam, h.sortParam(["jobDate", "createdAt", "status", "title"], "-jobDate"),
         { name: "status", in: "query", schema: { type: "string", enum: ["pending", "in-progress", "completed"] } },
         { name: "jobType", in: "query", schema: { type: "string", enum: ["interstate", "local"] } },
         { name: "assignedTo", in: "query", schema: { type: "string" } },

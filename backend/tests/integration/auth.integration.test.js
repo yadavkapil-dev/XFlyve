@@ -157,6 +157,22 @@ describe("Flow: Role authorization", () => {
 
     expect(res.status).toBe(200);
   });
+
+  test("PASS: a driver is denied (403) listing the truck fleet (GET /api/admin/trucks)", async () => {
+    const driver = await createDriver({ role: "driver" });
+
+    const res = await request(app).get("/api/admin/trucks").set("Authorization", authHeader(driver));
+
+    expect(res.status).toBe(403);
+  });
+
+  test("PASS: an admin CAN list the truck fleet (GET /api/admin/trucks)", async () => {
+    const admin = await createDriver({ role: "admin" });
+
+    const res = await request(app).get("/api/admin/trucks").set("Authorization", authHeader(admin));
+
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("Flow: Driver ownership", () => {

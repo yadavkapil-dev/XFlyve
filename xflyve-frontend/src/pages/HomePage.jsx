@@ -897,6 +897,11 @@ const HomePage = () => {
                         valueFormatter: (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short" }),
                       },
                     ]}
+                    // Job counts per day are always whole numbers — without
+                    // this, MUI's default "nice tick" algorithm shows
+                    // fractional ticks (0.0, 1.5, etc.) whenever the max
+                    // count in the trend window is small.
+                    yAxis={[{ tickMinStep: 1 }]}
                     series={[{ dataKey: "count", label: "Jobs", color: palette.blue }]}
                     height={260}
                   />
@@ -926,6 +931,10 @@ const HomePage = () => {
                       { status: "Out of Service", count: dashboard.truckStatusBreakdown["out-of-service"] },
                     ]}
                     xAxis={[{ dataKey: "status", scaleType: "band" }]}
+                    // Truck counts are always whole numbers — without this,
+                    // MUI's default "nice tick" algorithm shows fractional
+                    // ticks (0, 0.5, 1) whenever the max count is small.
+                    yAxis={[{ tickMinStep: 1 }]}
                     series={[
                       {
                         dataKey: "count",

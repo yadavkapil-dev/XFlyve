@@ -1,8 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Box, Chip, CircularProgress, Paper, Stack, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Paper,
+  Stack,
+  Typography,
+} from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import { getJobsReadyForInvoicing } from "../../api";
+import { getJobsReadyForInvoicing, updateJob } from "../../api";
 
 const palette = {
   ink: "#0b1220",
@@ -19,6 +32,8 @@ const Invoicing = () => {
   const [invoiceReadyJobs, setInvoiceReadyJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [invoiceTarget, setInvoiceTarget] = useState(null);
+  const [marking, setMarking] = useState(false);
 
   useEffect(() => {
     const fetchInvoiceReadyJobs = async () => {
@@ -35,6 +50,24 @@ const Invoicing = () => {
     };
     fetchInvoiceReadyJobs();
   }, []);
+
+  const confirmMarkInvoiced = async () => {
+    if (!invoiceTarget) return;
+    setMarking(true);
+    setError("");
+    try {
+      await updateJob(invoiceTarget._id, { invoiceStatus: "invoiced" });
+      // Optimistic removal — this job no longer satisfies
+      // findReadyForInvoicing()'s invoiceStatus filter, so it wouldn't
+      // reappear on a refetch either.
+      setInvoiceReadyJobs((prev) => prev.filter((job) => job._id !== invoiceTarget._id));
+      setInvoiceTarget(null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to mark job as invoiced");
+    } finally {
+      setMarking(false);
+    }
+  };
 
   return (
     <Box sx={{ minHeight: "100vh", pt: { xs: 3, sm: 4 }, pb: 6, overflowX: "hidden", background: `radial-gradient(circle at 0% 0%, ${alpha(palette.teal, 0.13)}, transparent 32%), linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)` }}>
@@ -65,15 +98,41 @@ const Invoicing = () => {
               <Stack spacing={1.5}>
                 {invoiceReadyJobs.map((job) => (
                   <Paper key={job._id} elevation={0} sx={{ p: 2, borderRadius: 4, border: "1px solid", borderColor: palette.line, bgcolor: alpha("#fff", 0.74) }}>
-                    <Typography fontWeight={950} sx={{ color: palette.ink }}>{job.title || "Untitled job"}</Typography>
-                    <Typography variant="body2" sx={{ color: palette.muted }}>{job.pickupLocation || "Pickup"} → {job.deliveryLocation || "Delivery"}</Typography>
-                    <Typography variant="body2" sx={{ color: palette.muted }}>Driver: {job.assignedTo?.name || "—"} · Truck: {job.assignedTruck?.truckNumber || "—"}</Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1.5}>
+                      <Box>
+                        <Typography fontWeight={950} sx={{ color: palette.ink }}>{job.title || "Untitled job"}</Typography>
+                        <Typography variant="body2" sx={{ color: palette.muted }}>{job.pickupLocation || "Pickup"} → {job.deliveryLocation || "Delivery"}</Typography>
+                        <Typography variant="body2" sx={{ color: palette.muted }}>Driver: {job.assignedTo?.name || "—"} · Truck: {job.assignedTruck?.truckNumber || "—"}</Typography>
+                      </Box>
+                      <Button
+                        onClick={() => setInvoiceTarget(job)}
+                        variant="outlined"
+                        sx={{ alignSelf: { xs: "flex-start", sm: "center" }, borderRadius: 3, fontWeight: 900, color: palette.teal, borderColor: alpha(palette.teal, 0.4) }}
+                      >
+                        Mark as Invoiced
+                      </Button>
+                    </Stack>
                   </Paper>
                 ))}
               </Stack>
             )}
           </Stack>
         </Paper>
+
+        <Dialog open={Boolean(invoiceTarget)} onClose={() => setInvoiceTarget(null)} PaperProps={{ sx: { borderRadius: 5 } }}>
+          <DialogTitle sx={{ fontWeight: 950 }}>Mark this job as invoiced?</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ color: palette.muted }}>
+              “{invoiceTarget?.title || "This job"}” will be marked as invoiced and will no longer appear in this list. This does not generate or send an invoice — it only records that one has been issued.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => setInvoiceTarget(null)} disabled={marking} sx={{ borderRadius: 3 }}>Cancel</Button>
+            <Button onClick={confirmMarkInvoiced} disabled={marking} variant="contained" sx={{ borderRadius: 3, fontWeight: 900, bgcolor: palette.teal }}>
+              {marking ? "Marking…" : "Mark as Invoiced"}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Box>
   );

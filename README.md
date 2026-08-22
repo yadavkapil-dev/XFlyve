@@ -44,7 +44,7 @@ This is a full-stack portfolio/production-readiness project: real auth, real rol
 **Requirements:** Node.js ≥18, a MongoDB instance (local via Docker, or your own).
 
 ```bash
-git clone <this-repo>
+git clone [this-repo](https://github.com/yadavkapil-dev/Xflyve.git)
 cd Xflyve
 
 # Backend
